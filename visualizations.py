@@ -1,7 +1,9 @@
 # visualizations.py
+from datetime import timedelta
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+import numpy as np
 
 def plot_sales_trend(data, moving_averages, show_daily, show_annotations):
     """Create an enhanced interactive sales trend visualization."""
@@ -129,129 +131,14 @@ def display_metrics(metrics):
     with col5:
         st.metric("Active Retailers", str(metrics['unique_retailers']))
 
-def display_performance_analysis(filtered_data):
-    """Display detailed performance analysis tabs."""
-    tabs = st.tabs(["By Retailer", "By Product", "Detailed View"])
-    
-    with tabs[0]:
-        retailer_metrics = filtered_data.groupby('Retailer').agg({
-            'Sales Dollars': 'sum',
-            'Units Sold': 'sum'
-        }).reset_index()
-        retailer_metrics['Average Price'] = retailer_metrics['Sales Dollars'] / retailer_metrics['Units Sold']
-        retailer_metrics = retailer_metrics.sort_values('Sales Dollars', ascending=False)
-        st.dataframe(retailer_metrics.style.format({
-            'Sales Dollars': '${:,.2f}',
-            'Units Sold': '{:,}',
-            'Average Price': '${:.2f}'
-        }))
-    
-    with tabs[1]:
-        product_metrics = filtered_data.groupby('Product Title').agg({
-            'Sales Dollars': 'sum',
-            'Units Sold': 'sum'
-        }).reset_index()
-        product_metrics['Average Price'] = product_metrics['Sales Dollars'] / product_metrics['Units Sold']
-        product_metrics = product_metrics.sort_values('Sales Dollars', ascending=False)
-        st.dataframe(product_metrics.style.format({
-            'Sales Dollars': '${:,.2f}',
-            'Units Sold': '{:,}',
-            'Average Price': '${:.2f}'
-        }))
-    
-    with tabs[2]:
-        st.dataframe(
-            filtered_data.sort_values('Date', ascending=False),
-            column_config={
-                "Sales Dollars": st.column_config.NumberColumn(
-                    "Revenue",
-                    format="$%.2f"
-                ),
-                "Units Sold": st.column_config.NumberColumn(
-                    "Units",
-                    format="%d"
-                )
-            }
-        )
-
-def display_product_analysis(filtered_data):
-    """Display color and size analysis sections."""
-    # Color Analysis
-    st.subheader("🎨 Color Analysis")
-    color_product_filter = st.selectbox(
-        "Select Product for Color Analysis",
-        options=["All"] + sorted(filtered_data['Product Title'].unique().tolist()),
-        key="color_filter"
-    )
-    
-    color_line_fig, color_pie_fig = create_distribution_charts(filtered_data, 'Color', color_product_filter)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.plotly_chart(color_line_fig, use_container_width=True)
-    with col2:
-        st.plotly_chart(color_pie_fig, use_container_width=True)
-
-    # Size Analysis
-    st.subheader("📏 Size Analysis")
-    size_product_filter = st.selectbox(
-        "Select Product for Size Analysis",
-        options=["All"] + sorted(filtered_data['Product Title'].unique().tolist()),
-        key="size_filter"
-    )
-
-    size_line_fig, size_pie_fig = create_distribution_charts(filtered_data, 'Size', size_product_filter)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.plotly_chart(size_line_fig, use_container_width=True)
-    with col2:
-        st.plotly_chart(size_pie_fig, use_container_width=True)
-
-def create_dynamic_pivot(data, rows, values_col='Sales Dollars'):
-    """
-    Create a dynamic pivot table based on selected dimensions.
-    
-    Args:
-        data (pd.DataFrame): The filtered dataset
-        rows (list): List of dimensions to use as rows (e.g., ['Retailer', 'Product Title'])
-        values_col (str): Column to aggregate ('Sales Dollars' or 'Units Sold')
-    
-    Returns:
-        pd.DataFrame: Formatted pivot table with totals and percentages
-    """
-    # Create the base pivot table
-    pivot = pd.pivot_table(
-        data,
-        values=values_col,
-        index=rows,
-        aggfunc='sum',
-        margins=True,
-        margins_name='Total'
-    )
-    
-    # Calculate percentage of total
-    total = pivot.loc['Total']
-    pivot_pct = pivot.div(total).multiply(100)
-    
-    # Combine the values and percentages
-    result = pd.DataFrame()
-    result[values_col] = pivot
-    result['% of Total'] = pivot_pct
-    
-    # Format the values
-    if values_col == 'Sales Dollars':
-        result[values_col] = result[values_col].map('${:,.2f}'.format)
-    else:
-        result[values_col] = result[values_col].map('{:,.0f}'.format)
-    
-    result['% of Total'] = result['% of Total'].map('{:.1f}%'.format)
-    
-    return result.reset_index()
-
-# Add to visualizations.py
-
-def create_pivot_analysis(data):
-    """Create an interactive pivot table analysis section."""
+def create_pivot_analysis_with_comparison(data, date_range):
+    """Create an interactive pivot table analysis section with period comparisons."""
     st.subheader("📊 Interactive Pivot Analysis")
+    
+    # Calculate previous period dates
+    period_length = (date_range[1] - date_range[0]).days
+    previous_start = date_range[0] - timedelta(days=period_length)
+    previous_end = date_range[0] - timedelta(days=1)
     
     # Create filter columns
     filter_col1, filter_col2 = st.columns(2)
@@ -272,25 +159,33 @@ def create_pivot_analysis(data):
             key="pivot_product_filter"
         )
     
-    # Apply filters to create filtered_data
+    # Filter data for both periods using exact same logic as filter_data function
     filtered_data = data.copy()
     if "All" not in retailer_filter:
         filtered_data = filtered_data[filtered_data['Retailer'].isin(retailer_filter)]
     if "All" not in product_filter:
         filtered_data = filtered_data[filtered_data['Product Title'].isin(product_filter)]
+        
+    current_data = filtered_data[
+        (filtered_data['Date'].dt.date >= date_range[0]) &
+        (filtered_data['Date'].dt.date <= date_range[1])
+    ].copy()
     
-    # Define available dimensions and metrics
+    previous_data = filtered_data[
+        (filtered_data['Date'].dt.date >= previous_start) &
+        (filtered_data['Date'].dt.date <= previous_end)
+    ].copy()
+    
+    # Continue with pivot table creation
     dimensions = ['Retailer', 'Product Title', 'Color', 'Size']
     
-    # Create three columns for pivot controls
-    col1, col2, col3 = st.columns([2, 2, 1])
-    
+    col1, col2 = st.columns([2, 2])
     with col1:
         selected_rows = st.multiselect(
             "Select Row Dimensions",
             options=dimensions,
             default=['Retailer'],
-            help="Select one or more dimensions to analyze. They will be nested in the order selected."
+            help="Select dimensions to analyze"
         )
     
     with col2:
@@ -300,61 +195,109 @@ def create_pivot_analysis(data):
             horizontal=True
         )
     
-    # Create pivot table if dimensions are selected
     if selected_rows:
-        # Ensure numeric type for the metric column
-        filtered_data[metric] = pd.to_numeric(filtered_data[metric], errors='coerce')
-        
-        # Create pivot table
-        pivot_data = pd.pivot_table(
-            filtered_data,
-            values=metric,
-            index=selected_rows,
-            aggfunc='sum',
-            margins=True,
-            margins_name='Total'
-        ).reset_index()
-        
-        # Calculate percentage of total
-        total = pivot_data.loc[pivot_data[selected_rows[0]] == 'Total', metric].values[0]
-        pivot_data['% of Total'] = (pivot_data[metric] / total * 100)
-        
-        # Sort by metric in descending order, keeping Total row at the bottom
-        non_total = pivot_data[pivot_data[selected_rows[0]] != 'Total'].copy()
-        total_row = pivot_data[pivot_data[selected_rows[0]] == 'Total'].copy()
-        
-        non_total = non_total.sort_values(by=metric, ascending=False)
-        pivot_data = pd.concat([non_total, total_row], ignore_index=True)
-        
-        # Create a copy for display that maintains numeric sorting
-        display_data = pivot_data.copy()
-        
-        # Format the values based on the metric type
-        if metric == 'Sales Dollars':
-            display_data = display_data.style.format({
-                metric: '${:,.2f}',
-                '% of Total': '{:.1f}%'
+        try:
+            # Create current period pivot
+            current_pivot = pd.pivot_table(
+                current_data,
+                values=metric,
+                index=selected_rows,
+                aggfunc='sum',
+                margins=True,
+                margins_name='Total'
+            ).reset_index()
+            
+            # Create previous period pivot
+            previous_pivot = pd.pivot_table(
+                previous_data,
+                values=metric,
+                index=selected_rows,
+                aggfunc='sum',
+                margins=True,
+                margins_name='Total'
+            ).reset_index()
+            
+            # Merge pivots
+            merged_pivot = current_pivot.merge(
+                previous_pivot,
+                on=selected_rows,
+                how='outer',
+                suffixes=('', '_prev')
+            ).fillna(0)
+            
+            # Calculate metrics
+            current_total = merged_pivot[metric].sum()
+            merged_pivot['Change %'] = np.where(
+                merged_pivot[f"{metric}_prev"] == 0,
+                'New',
+                ((merged_pivot[metric] - merged_pivot[f"{metric}_prev"]) / 
+                 merged_pivot[f"{metric}_prev"] * 100).round(1)
+            )
+            
+            merged_pivot['% of Total'] = (merged_pivot[metric] / current_total * 100).round(1)
+            
+            # Sort by current period metric (keeping Total at bottom)
+            non_total = merged_pivot[merged_pivot[selected_rows[0]] != 'Total'].sort_values(
+                metric, ascending=False)
+            total_row = merged_pivot[merged_pivot[selected_rows[0]] == 'Total']
+            merged_pivot = pd.concat([non_total, total_row])
+            
+# Format display
+            display_cols = {
+                **{dim: merged_pivot[dim] for dim in selected_rows},
+                'Current Period': merged_pivot[metric],
+                'Previous Period': merged_pivot[f"{metric}_prev"],
+                'Change %': merged_pivot['Change %'],
+                '% of Total': merged_pivot['% of Total']
+            }
+            
+            display_df = pd.DataFrame(display_cols)
+            
+            def style_change_column(value):
+                """Style the change column based on value."""
+                if value == 'New':
+                    return 'color: blue'
+                try:
+                    val = float(value)
+                    if val < 0:
+                        return 'color: red'
+                    elif val > 0:
+                        return 'color: green'
+                    return ''
+                except:
+                    return ''
+            
+            # Style the dataframe
+            number_format = '${:,.2f}' if metric == 'Sales Dollars' else '{:,.0f}'
+            styled_df = (display_df.style
+                .format({
+                    'Current Period': number_format,
+                    'Previous Period': number_format,
+                    'Change %': lambda x: f"{x}%" if x != 'New' else x,
+                    '% of Total': '{:.1f}%'
+                })
+                .applymap(style_change_column, subset=['Change %'])
+            )
+            
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Add download button
+            csv = display_df.to_csv(index=False)
+            st.download_button(
+                label="Download Analysis",
+                data=csv,
+                file_name=f"pivot_analysis_{'-'.join(selected_rows)}.csv",
+                mime="text/csv"
+            )
+            
+        except Exception as e:
+            st.error(f"Error creating pivot table: {str(e)}")
+            st.write("Debug information:")
+            st.write({
+                'current_data_shape': current_data.shape,
+                'previous_data_shape': previous_data.shape,
+                'selected_rows': selected_rows,
+                'metric': metric
             })
-        else:
-            display_data = display_data.style.format({
-                metric: '{:,.0f}',
-                '% of Total': '{:.1f}%'
-            })
-        
-        # Display the pivot table
-        st.dataframe(
-            display_data,
-            use_container_width=True,
-            height=400
-        )
-        
-        # Add download button for the pivot data
-        csv = pivot_data.to_csv(index=False)
-        st.download_button(
-            label="Download Pivot Data",
-            data=csv,
-            file_name=f"pivot_analysis_{'-'.join(selected_rows)}.csv",
-            mime="text/csv"
-        )
     else:
         st.info("Please select at least one dimension for analysis")
