@@ -9,6 +9,11 @@ from pathlib import Path
 from data_loader import load_data_from_gsheet, filter_data
 from visualizations import create_distribution_charts, create_pivot_analysis_with_comparison
 
+# Add constants at the top
+DEMO_SHEET_ID = "1Ar7YABu7FIUAAAcq-8YZ6LRDVLh8DVV_cKN0WCU12kY"
+DEMO_SHEET_RANGE = "sales_template"
+TEMPLATE_LINK = "https://docs.google.com/spreadsheets/d/1Ar7YABu7FIUAAAcq-8YZ6LRDVLh8DVV_cKN0WCU12kY/edit#gid=0"
+
 def get_date_range(timeframe, data):
     """Get start and end dates based on selected timeframe."""
     # Get the actual data range
@@ -40,8 +45,7 @@ def get_date_range(timeframe, data):
 
 def display_filters(data):
     """Display consolidated filters in a single row."""
-    st.subheader("🎯 Filters")
-    
+        
     col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
     
     with col1:
@@ -86,10 +90,94 @@ def display_filters(data):
     
     return retailer_filter, product_filter, date_range
 
+def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
+    """Create a compact sales overview chart showing both filtered and total data."""
+    fig = go.Figure()
+    
+    # Calculate total and filtered sales
+    total_sales = data.groupby('Date')['Sales Dollars'].sum().reset_index()
+    filtered_sales = filtered_data.groupby('Date')['Sales Dollars'].sum().reset_index()
+    
+    # Check if specific filters are applied (not "All")
+    filters_applied = ("All" not in retailer_filter) or ("All" not in product_filter)
+    
+    # Add total sales line (light gray)
+    fig.add_trace(go.Scatter(
+        x=total_sales['Date'],
+        y=total_sales['Sales Dollars'],
+        mode='lines',
+        name='Total Sales',
+        line=dict(color='rgba(200,200,200,0.5)', width=1),
+        hovertemplate="<b>Total Sales:</b> $%{y:,.2f}<br>",
+        yaxis='y'
+    ))
+    
+    # Add filtered sales line
+    fig.add_trace(go.Scatter(
+        x=filtered_sales['Date'],
+        y=filtered_sales['Sales Dollars'],
+        mode='lines',
+        name='Filtered Sales',
+        line=dict(color='#4B90B0', width=2),
+        hovertemplate="<b>Filtered Sales:</b> $%{y:,.2f}<br>",
+        yaxis='y2' if filters_applied else 'y'
+    ))
+    
+    # Base layout settings
+    layout = {
+        'height': 300,
+        'margin': dict(t=30, b=30, l=60, r=30),
+        'xaxis': dict(
+            title=None,
+            showgrid=True,
+            gridcolor='rgba(211,211,211,0.3)'
+        ),
+        'yaxis': dict(
+            title='Sales',
+            tickformat="$,.0f",
+            gridcolor='rgba(211,211,211,0.3)',
+            side='left'
+        ),
+        'legend': dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        'template': 'plotly_white',
+        'hovermode': 'x unified'
+    }
+    
+    # Add secondary y-axis only if specific filters are applied
+    if filters_applied:
+        layout.update({
+            'margin': dict(t=30, b=30, l=60, r=60),
+            'yaxis': dict(
+                title='Total Sales',
+                titlefont=dict(color='rgba(128,128,128,0.8)'),
+                tickfont=dict(color='rgba(128,128,128,0.8)'),
+                tickformat="$,.0f",
+                gridcolor='rgba(211,211,211,0.3)',
+                side='left'
+            ),
+            'yaxis2': dict(
+                title='Filtered Sales',
+                titlefont=dict(color='#4B90B0'),
+                tickfont=dict(color='#4B90B0'),
+                tickformat="$,.0f",
+                gridcolor='rgba(211,211,211,0.3)',
+                anchor="x",
+                overlaying="y",
+                side="right"
+            )
+        })
+    
+    fig.update_layout(layout)
+    return fig
+
 def create_sales_summary_with_comparison(data, dimension, date_range):
-    """
-    Create a summary DataFrame with both current and previous period metrics.
-    """
+    """Create a summary DataFrame with both current and previous period metrics."""
     # Convert date_range to datetime if they're date objects
     start_date = pd.to_datetime(date_range[0])
     end_date = pd.to_datetime(date_range[1])
@@ -197,92 +285,6 @@ def display_sales_summary(summary, dimension_name):
     
     st.dataframe(styled_df, use_container_width=True)
 
-def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
-    """Create a compact sales overview chart showing both filtered and total data."""
-    fig = go.Figure()
-    
-    # Calculate total and filtered sales
-    total_sales = data.groupby('Date')['Sales Dollars'].sum().reset_index()
-    filtered_sales = filtered_data.groupby('Date')['Sales Dollars'].sum().reset_index()
-    
-    # Check if specific filters are applied (not "All")
-    filters_applied = ("All" not in retailer_filter) or ("All" not in product_filter)
-    
-    # Add total sales line (light gray)
-    fig.add_trace(go.Scatter(
-        x=total_sales['Date'],
-        y=total_sales['Sales Dollars'],
-        mode='lines',
-        name='Total Sales',
-        line=dict(color='rgba(200,200,200,0.5)', width=1),
-        hovertemplate="<b>Total Sales:</b> $%{y:,.2f}<br>",
-        yaxis='y'
-    ))
-    
-    # Add filtered sales line
-    fig.add_trace(go.Scatter(
-        x=filtered_sales['Date'],
-        y=filtered_sales['Sales Dollars'],
-        mode='lines',
-        name='Filtered Sales',
-        line=dict(color='#4B90B0', width=2),
-        hovertemplate="<b>Filtered Sales:</b> $%{y:,.2f}<br>",
-        yaxis='y2' if filters_applied else 'y'
-    ))
-    
-    # Base layout settings
-    layout = {
-        'height': 300,
-        'margin': dict(t=30, b=30, l=60, r=30),
-        'xaxis': dict(
-            title=None,
-            showgrid=True,
-            gridcolor='rgba(211,211,211,0.3)'
-        ),
-        'yaxis': dict(
-            title='Sales',
-            tickformat="$,.0f",
-            gridcolor='rgba(211,211,211,0.3)',
-            side='left'
-        ),
-        'legend': dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        'template': 'plotly_white',
-        'hovermode': 'x unified'
-    }
-    
-    # Add secondary y-axis only if specific filters are applied
-    if filters_applied:
-        layout.update({
-            'margin': dict(t=30, b=30, l=60, r=60),
-            'yaxis': dict(
-                title='Total Sales',
-                titlefont=dict(color='rgba(128,128,128,0.8)'),
-                tickfont=dict(color='rgba(128,128,128,0.8)'),
-                tickformat="$,.0f",
-                gridcolor='rgba(211,211,211,0.3)',
-                side='left'
-            ),
-            'yaxis2': dict(
-                title='Filtered Sales',
-                titlefont=dict(color='#4B90B0'),
-                tickfont=dict(color='#4B90B0'),
-                tickformat="$,.0f",
-                gridcolor='rgba(211,211,211,0.3)',
-                anchor="x",
-                overlaying="y",
-                side="right"
-            )
-        })
-    
-    fig.update_layout(layout)
-    return fig
-
 def get_config_path():
     """Get the path to the configuration file."""
     config_dir = Path.home() / '.streamlit_sales_dashboard'
@@ -315,7 +317,13 @@ def save_config(sheet_id, sheet_range):
 
 def main():
     st.set_page_config(page_title="Sales Analytics Dashboard", layout="wide")
-    st.title("📈 Sales Analytics Dashboard")
+    
+    # Initialize session state for sidebar collapse
+    if 'sidebar_collapsed' not in st.session_state:
+        st.session_state.sidebar_collapsed = False
+    
+    # Main content
+    st.title(" Sales Analytics Dashboard")
     
     # Initialize session state
     if 'sheet_id' not in st.session_state:
@@ -323,51 +331,71 @@ def main():
         st.session_state.sheet_id = config.get('sheet_id', '')
         st.session_state.sheet_range = config.get('sheet_range', 'sales_template')
 
-    # Sidebar configuration
-    st.sidebar.header("📊 Data Source Configuration")
-    st.sidebar.markdown("""
-    ### How to connect your data:
-    1. Share your Google Sheet with the service account email
-    2. Enter the Sheet ID below (the string between /d/ and /edit in the URL)
-    3. Specify the range (e.g., 'Sales Data!A1:H')
-    """)
-    
-    sheet_id = st.sidebar.text_input("Google Sheet ID", value=st.session_state.sheet_id)
-    sheet_range = st.sidebar.text_input(
-        "Sheet Range", 
-        value=st.session_state.sheet_range,
-        help="Enter sheet name or include range (e.g. 'sales_template' or 'sales_template!A1:H')"
-    )
-    
-    # Save/Clear configuration buttons
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("Save Config"):
-            save_config(sheet_id, sheet_range)
-            st.session_state.sheet_id = sheet_id
-            st.session_state.sheet_range = sheet_range
-            st.sidebar.success("Saved!")
-    
-    with col2:
-        if st.button("Clear Config"):
-            if os.path.exists(get_config_path()):
-                os.remove(get_config_path())
-            st.session_state.sheet_id = ''
-            st.session_state.sheet_range = 'sales_template'
-            st.sidebar.success("Cleared!")
-            st.experimental_rerun()
+    # Only show detailed sidebar content if not collapsed
+    if not st.session_state.sidebar_collapsed:
+        with st.sidebar:
+            
+            # Add template download instructions
+            st.markdown("""
+            ### 🚀 Getting Started
+            1. [Download the template spreadsheet](%s)
+            2. Make a copy for your own use (File > Make a copy)
+            3. Populate with your sales data following the template format
+            4. Grant viewer access to your Google Sheet to analytics-dash@analytics-dash-443921.iam.gserviceaccount.com
+            5. Enter your sheet ID (the long string between /d/ and /edit in the URL
+            """ % TEMPLATE_LINK)
+            
+            st.markdown("---")
+            st.markdown("### 🔗 Connect Your Data")
+            sheet_id = st.text_input(
+                "Google Sheet ID", 
+                value=st.session_state.sheet_id,
+                placeholder="Enter your Sheet ID or leave blank for demo data"
+            )
+            sheet_range = st.text_input(
+                "Sheet Range", 
+                value=st.session_state.sheet_range,
+                help="Enter sheet name or include range (e.g. 'sales_template' or 'sales_template!A1:H')"
+            )
+            
+            # Save/Clear configuration buttons
+            col1, col2 = st.columns(2)
+            with col1:
+             if st.button("Reset Config"):
+                    if os.path.exists(get_config_path()):
+                        os.remove(get_config_path())
+                    st.session_state.sheet_id = ''
+                    st.session_state.sheet_range = 'sales_template'
+                    st.success("Cleared!")
+                    st.rerun()
+        
+            
+            with col2:
+                if st.button("Load Data"):
+                    save_config(sheet_id, sheet_range)
+                    st.session_state.sheet_id = sheet_id
+                    st.session_state.sheet_range = sheet_range
+                    st.success("Saved!")
+                
+    else:
+        # When sidebar is collapsed, we still need the sheet_id value
+        sheet_id = st.session_state.sheet_id
+        sheet_range = st.session_state.sheet_range
 
+    # Load data based on whether user provided their own sheet ID or using demo data
     if not sheet_id:
-        st.info("👈 Please enter your Google Sheet ID in the sidebar to get started.")
-        return
+        data, error = load_data_from_gsheet(DEMO_SHEET_ID, DEMO_SHEET_RANGE)
+        if not st.session_state.sidebar_collapsed:
+            st.sidebar.info("👆 Currently using demo data. Enter your Sheet ID above to use your own data.")
+    else:
+        data, error = load_data_from_gsheet(sheet_id, sheet_range)
     
-    data, error = load_data_from_gsheet(sheet_id, sheet_range)
     if error:
         st.error(error)
         return
     if data is None:
         return
-    
+
     # Display filters
     retailer_filter, product_filter, date_range = display_filters(data)
     
@@ -377,8 +405,7 @@ def main():
     # Display sales overview
     st.plotly_chart(plot_sales_overview(data, filtered_data, retailer_filter, product_filter), use_container_width=True)
     
-    # Add enhanced pivot analysis section with comparisons
-    create_pivot_analysis_with_comparison(data, date_range)
+ 
     
     # Display sales summaries with comparisons
     col1, col2 = st.columns(2)
@@ -392,7 +419,7 @@ def main():
         display_sales_summary(product_summary, 'Product Title')
     
     # Combined Size and Color Analysis
-    st.subheader("📊 Product Dimension Analysis")
+    st.subheader("Color and Size Analysis")
     
     # Single product filter for both analyses
     product_filter = st.selectbox(
@@ -402,7 +429,7 @@ def main():
     )
     
     # Create tabs for Size and Color analysis
-    dimension_tabs = st.tabs(["📏 Size Analysis", "🎨 Color Analysis"])
+    dimension_tabs = st.tabs(["Size Analysis", "Color Analysis"])
     
     with dimension_tabs[0]:  # Size Analysis
         size_line_fig, size_pie_fig = create_distribution_charts(filtered_data, 'Size', product_filter)
@@ -419,6 +446,9 @@ def main():
             st.plotly_chart(color_line_fig, use_container_width=True)
         with col2:
             st.plotly_chart(color_pie_fig, use_container_width=True)
+
+               # Add enhanced pivot analysis section with comparisons
+    create_pivot_analysis_with_comparison(data, date_range)
 
 if __name__ == "__main__":
     main()
