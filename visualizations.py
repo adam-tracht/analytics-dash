@@ -5,6 +5,26 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 
+def clean_dimension_values(data, dimension):
+    """Clean dimension values by replacing empty, null, and zero values with 'N/A'"""
+    if dimension in ['Color', 'Size']:
+        # Create a copy to avoid modifying the original
+        data = data.copy()
+        
+        # Convert column to string type first
+        data[dimension] = data[dimension].astype(str)
+        
+        # List of values to replace with 'N/A'
+        replace_values = ['0', '0.0', 'nan', 'None', 'none', 'null', '', ' ']
+        
+        # Replace all empty/null/zero values with 'N/A'
+        data[dimension] = data[dimension].replace(replace_values, 'N/A')
+        
+        # Also replace any whitespace-only strings with 'N/A'
+        data[dimension] = data[dimension].apply(lambda x: 'N/A' if x.strip() == '' else x)
+        
+    return data
+
 def plot_sales_trend(data, moving_averages, show_daily, show_annotations):
     """Create an enhanced interactive sales trend visualization."""
     if data.empty:
@@ -53,6 +73,12 @@ def plot_sales_trend(data, moving_averages, show_daily, show_annotations):
 
 def create_distribution_charts(data, dimension, selected_product="All"):
     """Create line and pie charts showing sales distribution by dimension (Color/Size)."""
+    # Create a copy of the data to avoid modifying the original
+    data = data.copy()
+    
+    # Clean dimension values
+    data = clean_dimension_values(data, dimension)
+    
     if selected_product != "All":
         data = data[data['Product Title'] == selected_product]
     
@@ -60,10 +86,14 @@ def create_distribution_charts(data, dimension, selected_product="All"):
     dim_sales = data.groupby([dimension, 'Date'])['Sales Dollars'].sum().reset_index()
     dim_totals = data.groupby(dimension)['Sales Dollars'].sum().reset_index()
     
+    # Calculate total sales and percentages
     total_sales = dim_totals['Sales Dollars'].sum()
-    dim_totals['Percentage'] = dim_totals['Sales Dollars'] / total_sales * 100
+    dim_totals['Percentage'] = (dim_totals['Sales Dollars'] / total_sales * 100).round(2)
     
-    # Separate main categories and others
+    # Sort by sales value descending
+    dim_totals = dim_totals.sort_values('Sales Dollars', ascending=False)
+    
+    # Separate main categories and others (those less than 5%)
     main_cats = dim_totals[dim_totals['Percentage'] >= 5].copy()
     other_cats = dim_totals[dim_totals['Percentage'] < 5]
     
@@ -77,6 +107,8 @@ def create_distribution_charts(data, dimension, selected_product="All"):
     
     # Create line chart
     line_fig = go.Figure()
+    
+    # Add trace for each main category
     for cat in main_cats[dimension].unique():
         cat_data = dim_sales[dim_sales[dimension] == cat]
         line_fig.add_trace(go.Scatter(
@@ -84,16 +116,32 @@ def create_distribution_charts(data, dimension, selected_product="All"):
             y=cat_data['Sales Dollars'],
             name=str(cat),
             mode='lines',
-            hovertemplate=f"<b>Date:</b> %{{x|%Y-%m-%d}}<br><b>Sales:</b> $%{{y:,.2f}}<br>"
+            hovertemplate=f"<b>{dimension}:</b> {cat}<br>" +
+                         "<b>Date:</b> %{x|%Y-%m-%d}<br>" +
+                         "<b>Sales:</b> $%{y:,.2f}<extra></extra>"
         ))
     
     line_fig.update_layout(
         title=f'Sales Trend by {dimension} (>5% of total sales)',
         template='plotly_white',
         hovermode='x unified',
-        xaxis=dict(title='Date', showgrid=True, gridcolor='rgba(211,211,211,0.3)'),
-        yaxis=dict(title='Revenue ($)', tickformat="$,.0f", gridcolor='rgba(211,211,211,0.3)'),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(
+            title='Date',
+            showgrid=True,
+            gridcolor='rgba(211,211,211,0.3)'
+        ),
+        yaxis=dict(
+            title='Revenue ($)',
+            tickformat="$,.0f",
+            gridcolor='rgba(211,211,211,0.3)'
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
         margin=dict(t=100)
     )
     
@@ -102,7 +150,9 @@ def create_distribution_charts(data, dimension, selected_product="All"):
         labels=dim_totals[dimension],
         values=dim_totals['Sales Dollars'],
         hole=.3,
-        hovertemplate=f"<b>{dimension}:</b> %{{label}}<br><b>Sales:</b> $%{{value:,.2f}}<br><b>Percentage:</b> %{{percent:.1f}}%<extra></extra>"
+        hovertemplate=f"<b>{dimension}:</b> %{{label}}<br>" +
+                     "<b>Sales:</b> $%{value:,.2f}<br>" +
+                     "<b>Percentage:</b> %{percent:.1f}%<extra></extra>"
     )])
     
     pie_fig.update_layout(
@@ -133,7 +183,7 @@ def display_metrics(metrics):
 
 def create_pivot_analysis_with_comparison(data, date_range):
     """Create an interactive pivot table analysis section with period comparisons."""
-    st.subheader("📊 Interactive Pivot Analysis")
+    st.subheader("Interactive Pivot Table")
     
     # Calculate previous period dates
     period_length = (date_range[1] - date_range[0]).days
@@ -159,26 +209,34 @@ def create_pivot_analysis_with_comparison(data, date_range):
             key="pivot_product_filter"
         )
     
-    # Filter data for both periods using exact same logic as filter_data function
+    # Filter data for both periods
     filtered_data = data.copy()
     if "All" not in retailer_filter:
         filtered_data = filtered_data[filtered_data['Retailer'].isin(retailer_filter)]
     if "All" not in product_filter:
         filtered_data = filtered_data[filtered_data['Product Title'].isin(product_filter)]
-        
+    
+    # Get current period data
     current_data = filtered_data[
         (filtered_data['Date'].dt.date >= date_range[0]) &
         (filtered_data['Date'].dt.date <= date_range[1])
     ].copy()
     
+    # Get previous period data
     previous_data = filtered_data[
         (filtered_data['Date'].dt.date >= previous_start) &
         (filtered_data['Date'].dt.date <= previous_end)
     ].copy()
     
-    # Continue with pivot table creation
+    # Clean dimension values for Color and Size
+    for dimension in ['Color', 'Size']:
+        current_data = clean_dimension_values(current_data, dimension)
+        previous_data = clean_dimension_values(previous_data, dimension)
+    
+    # Available dimensions for pivot table
     dimensions = ['Retailer', 'Product Title', 'Color', 'Size']
     
+    # Create selection columns
     col1, col2 = st.columns([2, 2])
     with col1:
         selected_rows = st.multiselect(
@@ -242,7 +300,7 @@ def create_pivot_analysis_with_comparison(data, date_range):
             total_row = merged_pivot[merged_pivot[selected_rows[0]] == 'Total']
             merged_pivot = pd.concat([non_total, total_row])
             
-# Format display
+            # Format display
             display_cols = {
                 **{dim: merged_pivot[dim] for dim in selected_rows},
                 'Current Period': merged_pivot[metric],
