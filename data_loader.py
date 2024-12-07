@@ -83,10 +83,6 @@ def load_data_from_gsheet(spreadsheet_id, range_name):
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         
         # Check for data conversion errors
-        if df['Sales Dollars'].isna().any():
-            st.warning("Some sales values could not be converted to numbers")
-        if df['Units Sold'].isna().any():
-            st.warning("Some unit values could not be converted to numbers")
         if df['Date'].isna().any():
             st.warning("Some dates could not be parsed properly")
             
