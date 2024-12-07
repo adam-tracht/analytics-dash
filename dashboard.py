@@ -7,12 +7,21 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from data_loader import load_data_from_gsheet, filter_data
-from visualizations import create_distribution_charts, create_pivot_analysis
+from visualizations import create_distribution_charts, create_pivot_analysis_with_comparison
 
 def get_date_range(timeframe, data):
     """Get start and end dates based on selected timeframe."""
-    end_date = data['Date'].max().date()
+    # Get the actual data range
+    min_date = data['Date'].min().date()
+    max_date = data['Date'].max().date()
     
+    # Calculate the requested end date (either max_date or based on timeframe)
+    if timeframe == 'Custom':
+        return None
+        
+    end_date = max_date
+    
+    # Calculate start date ensuring we don't go before our data
     if timeframe == '1W':
         start_date = end_date - timedelta(days=7)
     elif timeframe == '1M':
@@ -23,8 +32,10 @@ def get_date_range(timeframe, data):
         start_date = end_date - timedelta(days=180)
     elif timeframe == '1Y':
         start_date = end_date - timedelta(days=365)
-    else:  # Custom
-        return None
+    
+    # Ensure start date isn't before our data
+    start_date = max(start_date, min_date)
+    
     return start_date, end_date
 
 def display_filters(data):
@@ -75,9 +86,119 @@ def display_filters(data):
     
     return retailer_filter, product_filter, date_range
 
+def create_sales_summary_with_comparison(data, dimension, date_range):
+    """
+    Create a summary DataFrame with both current and previous period metrics.
+    """
+    # Convert date_range to datetime if they're date objects
+    start_date = pd.to_datetime(date_range[0])
+    end_date = pd.to_datetime(date_range[1])
+    
+    # Calculate the length of the current period in days
+    current_period_length = (end_date - start_date).days
+    
+    # Define the previous period date range
+    previous_start = start_date - pd.Timedelta(days=current_period_length)
+    previous_end = start_date - pd.Timedelta(days=1)
+    
+    # Split data into current and previous periods
+    current_period_data = data[
+        (data['Date'] >= start_date) &
+        (data['Date'] <= end_date)
+    ]
+    previous_period_data = data[
+        (data['Date'] >= previous_start) &
+        (data['Date'] <= previous_end)
+    ]
+    
+    # Create summaries for both periods
+    current_summary = current_period_data.groupby(dimension).agg({
+        'Sales Dollars': 'sum',
+        'Units Sold': 'sum'
+    }).reset_index()
+    
+    previous_summary = previous_period_data.groupby(dimension).agg({
+        'Sales Dollars': 'sum',
+        'Units Sold': 'sum'
+    }).reset_index()
+    
+    # Calculate metrics for current period
+    current_summary['Average Price'] = current_summary['Sales Dollars'] / current_summary['Units Sold']
+    current_summary['Revenue %'] = (current_summary['Sales Dollars'] / current_summary['Sales Dollars'].sum() * 100).round(1)
+    current_summary['Units %'] = (current_summary['Units Sold'] / current_summary['Units Sold'].sum() * 100).round(1)
+    
+    # Merge with previous period data
+    summary = current_summary.merge(
+        previous_summary,
+        on=dimension,
+        how='left',
+        suffixes=('', '_prev')
+    )
+    
+    # Calculate period-over-period changes
+    summary['Revenue Change %'] = (
+        (summary['Sales Dollars'] - summary['Sales Dollars_prev']) /
+        summary['Sales Dollars_prev'] * 100
+    ).round(1)
+    
+    summary['Units Change %'] = (
+        (summary['Units Sold'] - summary['Units Sold_prev']) /
+        summary['Units Sold_prev'] * 100
+    ).round(1)
+    
+    # Fill NaN values for new items
+    summary = summary.fillna({
+        'Sales Dollars_prev': 0,
+        'Units Sold_prev': 0,
+        'Revenue Change %': float('inf'),
+        'Units Change %': float('inf')
+    })
+    
+    # Sort by current period revenue
+    summary = summary.sort_values('Sales Dollars', ascending=False)
+    
+    # Replace infinity values with "New"
+    summary['Revenue Change %'] = summary['Revenue Change %'].replace(float('inf'), 'New')
+    summary['Units Change %'] = summary['Units Change %'].replace(float('inf'), 'New')
+    
+    return summary
+
+def display_sales_summary(summary, dimension_name):
+    """Display the sales summary with period comparisons using Streamlit."""
+    st.subheader(f"Sales by {dimension_name}")
+    
+    # Format the DataFrame for display
+    display_cols = {
+        dimension_name: summary[dimension_name],
+        'Current Revenue': summary['Sales Dollars'],
+        'vs Prev Period': summary['Revenue Change %'],
+        'Current Units': summary['Units Sold'],
+        'vs Prev Period ': summary['Units Change %'],  # Extra space to make unique
+        'Avg Price': summary['Average Price'],
+        'Revenue %': summary['Revenue %']
+    }
+    
+    display_df = pd.DataFrame(display_cols)
+    
+    # Create the styled DataFrame
+    styled_df = display_df.style.format({
+        'Current Revenue': '${:,.2f}',
+        'Current Units': '{:,}',
+        'vs Prev Period': lambda x: f"{x}%" if isinstance(x, (int, float)) else x,
+        'vs Prev Period ': lambda x: f"{x}%" if isinstance(x, (int, float)) else x,
+        'Avg Price': '${:.2f}',
+        'Revenue %': '{:.1f}%'
+    }).apply(lambda x: [
+        'color: red' if isinstance(v, (int, float)) and v < 0 else
+        'color: green' if isinstance(v, (int, float)) and v > 0 else
+        'color: blue' if v == 'New' else
+        '' for v in x
+    ], subset=['vs Prev Period', 'vs Prev Period '])
+    
+    st.dataframe(styled_df, use_container_width=True)
+
 def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
-    """Create a compact sales overview chart showing both filtered and total data.
-    Uses a secondary y-axis only when specific filters are actively applied."""
+    """Create a compact sales overview chart showing both filtered and total data."""
     fig = go.Figure()
     
     # Calculate total and filtered sales
@@ -112,7 +233,7 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
     # Base layout settings
     layout = {
         'height': 300,
-        'margin': dict(t=30, b=30, l=60, r=30),  # Default right margin
+        'margin': dict(t=30, b=30, l=60, r=30),
         'xaxis': dict(
             title=None,
             showgrid=True,
@@ -138,7 +259,7 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
     # Add secondary y-axis only if specific filters are applied
     if filters_applied:
         layout.update({
-            'margin': dict(t=30, b=30, l=60, r=60),  # Increased right margin for second y-axis
+            'margin': dict(t=30, b=30, l=60, r=60),
             'yaxis': dict(
                 title='Total Sales',
                 titlefont=dict(color='rgba(128,128,128,0.8)'),
@@ -161,22 +282,6 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
     
     fig.update_layout(layout)
     return fig
-
-def create_sales_summary(data, dimension):
-    """Create a summary DataFrame with both units and revenue."""
-    summary = data.groupby(dimension).agg({
-        'Sales Dollars': 'sum',
-        'Units Sold': 'sum'
-    }).reset_index()
-    
-    summary['Average Price'] = summary['Sales Dollars'] / summary['Units Sold']
-    summary = summary.sort_values('Sales Dollars', ascending=False)
-    
-    # Calculate percentages
-    summary['Revenue %'] = (summary['Sales Dollars'] / summary['Sales Dollars'].sum() * 100).round(1)
-    summary['Units %'] = (summary['Units Sold'] / summary['Units Sold'].sum() * 100).round(1)
-    
-    return summary
 
 def get_config_path():
     """Get the path to the configuration file."""
@@ -270,42 +375,21 @@ def main():
     filtered_data = filter_data(data, retailer_filter, product_filter, date_range)
     
     # Display sales overview
-    # In dashboard.py, modify this line:
     st.plotly_chart(plot_sales_overview(data, filtered_data, retailer_filter, product_filter), use_container_width=True)
     
-    # Add pivot analysis section
-    create_pivot_analysis(filtered_data)
+    # Add enhanced pivot analysis section with comparisons
+    create_pivot_analysis_with_comparison(data, date_range)
     
-    # Display sales summaries in two columns
+    # Display sales summaries with comparisons
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Sales by Retailer")
-        retailer_summary = create_sales_summary(filtered_data, 'Retailer')
-        st.dataframe(
-            retailer_summary.style.format({
-                'Sales Dollars': '${:,.2f}',
-                'Units Sold': '{:,}',
-                'Average Price': '${:.2f}',
-                'Revenue %': '{:.1f}%',
-                'Units %': '{:.1f}%'
-            }),
-            use_container_width=True
-        )
+        retailer_summary = create_sales_summary_with_comparison(data, 'Retailer', date_range)
+        display_sales_summary(retailer_summary, 'Retailer')
     
     with col2:
-        st.subheader("Sales by Product")
-        product_summary = create_sales_summary(filtered_data, 'Product Title')
-        st.dataframe(
-            product_summary.style.format({
-                'Sales Dollars': '${:,.2f}',
-                'Units Sold': '{:,}',
-                'Average Price': '${:.2f}',
-                'Revenue %': '{:.1f}%',
-                'Units %': '{:.1f}%'
-            }),
-            use_container_width=True
-        )
+        product_summary = create_sales_summary_with_comparison(data, 'Product Title', date_range)
+        display_sales_summary(product_summary, 'Product Title')
     
     # Combined Size and Color Analysis
     st.subheader("📊 Product Dimension Analysis")
