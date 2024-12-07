@@ -305,6 +305,7 @@ def create_pivot_analysis(data):
         # Ensure numeric type for the metric column
         filtered_data[metric] = pd.to_numeric(filtered_data[metric], errors='coerce')
         
+        # Create pivot table
         pivot_data = pd.pivot_table(
             filtered_data,
             values=metric,
@@ -317,6 +318,13 @@ def create_pivot_analysis(data):
         # Calculate percentage of total
         total = pivot_data.loc[pivot_data[selected_rows[0]] == 'Total', metric].values[0]
         pivot_data['% of Total'] = (pivot_data[metric] / total * 100)
+        
+        # Sort by metric in descending order, keeping Total row at the bottom
+        non_total = pivot_data[pivot_data[selected_rows[0]] != 'Total'].copy()
+        total_row = pivot_data[pivot_data[selected_rows[0]] == 'Total'].copy()
+        
+        non_total = non_total.sort_values(by=metric, ascending=False)
+        pivot_data = pd.concat([non_total, total_row], ignore_index=True)
         
         # Create a copy for display that maintains numeric sorting
         display_data = pivot_data.copy()
