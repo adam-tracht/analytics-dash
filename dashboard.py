@@ -75,42 +75,91 @@ def display_filters(data):
     
     return retailer_filter, product_filter, date_range
 
-def plot_sales_overview(data, filtered_data):
-    """Create a compact sales overview chart showing both filtered and total data."""
+def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
+    """Create a compact sales overview chart showing both filtered and total data.
+    Uses a secondary y-axis only when specific filters are actively applied."""
     fig = go.Figure()
     
-    # Add total sales line (light gray)
+    # Calculate total and filtered sales
     total_sales = data.groupby('Date')['Sales Dollars'].sum().reset_index()
+    filtered_sales = filtered_data.groupby('Date')['Sales Dollars'].sum().reset_index()
+    
+    # Check if specific filters are applied (not "All")
+    filters_applied = ("All" not in retailer_filter) or ("All" not in product_filter)
+    
+    # Add total sales line (light gray)
     fig.add_trace(go.Scatter(
         x=total_sales['Date'],
         y=total_sales['Sales Dollars'],
         mode='lines',
         name='Total Sales',
         line=dict(color='rgba(200,200,200,0.5)', width=1),
-        hovertemplate="<b>Total Sales:</b> $%{y:,.2f}<br>"
+        hovertemplate="<b>Total Sales:</b> $%{y:,.2f}<br>",
+        yaxis='y'
     ))
     
     # Add filtered sales line
-    filtered_sales = filtered_data.groupby('Date')['Sales Dollars'].sum().reset_index()
     fig.add_trace(go.Scatter(
         x=filtered_sales['Date'],
         y=filtered_sales['Sales Dollars'],
         mode='lines',
         name='Filtered Sales',
         line=dict(color='#4B90B0', width=2),
-        hovertemplate="<b>Filtered Sales:</b> $%{y:,.2f}<br>"
+        hovertemplate="<b>Filtered Sales:</b> $%{y:,.2f}<br>",
+        yaxis='y2' if filters_applied else 'y'
     ))
     
-    fig.update_layout(
-        height=300,
-        margin=dict(t=30, b=30, l=60, r=30),
-        xaxis=dict(title=None, showgrid=True, gridcolor='rgba(211,211,211,0.3)'),
-        yaxis=dict(title=None, tickformat="$,.0f", gridcolor='rgba(211,211,211,0.3)'),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        template='plotly_white',
-        hovermode='x unified'
-    )
+    # Base layout settings
+    layout = {
+        'height': 300,
+        'margin': dict(t=30, b=30, l=60, r=30),  # Default right margin
+        'xaxis': dict(
+            title=None,
+            showgrid=True,
+            gridcolor='rgba(211,211,211,0.3)'
+        ),
+        'yaxis': dict(
+            title='Sales',
+            tickformat="$,.0f",
+            gridcolor='rgba(211,211,211,0.3)',
+            side='left'
+        ),
+        'legend': dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        'template': 'plotly_white',
+        'hovermode': 'x unified'
+    }
     
+    # Add secondary y-axis only if specific filters are applied
+    if filters_applied:
+        layout.update({
+            'margin': dict(t=30, b=30, l=60, r=60),  # Increased right margin for second y-axis
+            'yaxis': dict(
+                title='Total Sales',
+                titlefont=dict(color='rgba(128,128,128,0.8)'),
+                tickfont=dict(color='rgba(128,128,128,0.8)'),
+                tickformat="$,.0f",
+                gridcolor='rgba(211,211,211,0.3)',
+                side='left'
+            ),
+            'yaxis2': dict(
+                title='Filtered Sales',
+                titlefont=dict(color='#4B90B0'),
+                tickfont=dict(color='#4B90B0'),
+                tickformat="$,.0f",
+                gridcolor='rgba(211,211,211,0.3)',
+                anchor="x",
+                overlaying="y",
+                side="right"
+            )
+        })
+    
+    fig.update_layout(layout)
     return fig
 
 def create_sales_summary(data, dimension):
@@ -221,7 +270,8 @@ def main():
     filtered_data = filter_data(data, retailer_filter, product_filter, date_range)
     
     # Display sales overview
-    st.plotly_chart(plot_sales_overview(data, filtered_data), use_container_width=True)
+    # In dashboard.py, modify this line:
+    st.plotly_chart(plot_sales_overview(data, filtered_data, retailer_filter, product_filter), use_container_width=True)
     
     # Add pivot analysis section
     create_pivot_analysis(filtered_data)
