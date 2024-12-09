@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from data_loader import load_data_from_gsheet, filter_data
 from visualizations import create_distribution_charts, create_pivot_analysis_with_comparison
+import numpy as np
+
 
 # Add constants at the top
 DEMO_SHEET_ID = "1Ar7YABu7FIUAAAcq-8YZ6LRDVLh8DVV_cKN0WCU12kY"
@@ -20,26 +22,36 @@ def get_date_range(timeframe, data):
     min_date = data['Date'].min().date()
     max_date = data['Date'].max().date()
     
-    # Calculate the requested end date (either max_date or based on timeframe)
+    # Return None for custom timeframe
     if timeframe == 'Custom':
         return None
-        
-    end_date = max_date
     
-    # Calculate start date ensuring we don't go before our data
+    # For weekly filter, find the most recent Monday in the data
     if timeframe == '1W':
-        start_date = end_date - timedelta(days=7)
-    elif timeframe == '1M':
-        start_date = end_date - timedelta(days=30)
-    elif timeframe == '3M':
-        start_date = end_date - timedelta(days=90)
-    elif timeframe == '6M':
-        start_date = end_date - timedelta(days=180)
-    elif timeframe == '1Y':
-        start_date = end_date - timedelta(days=365)
-    
-    # Ensure start date isn't before our data
-    start_date = max(start_date, min_date)
+        # Get the most recent Monday from max_date
+        days_since_monday = max_date.weekday()  # 0 = Monday, 1 = Tuesday, etc.
+        end_date = max_date - timedelta(days=days_since_monday)  # Move back to most recent Monday
+        start_date = end_date - timedelta(days=6)  # Previous week's Tuesday
+        
+        # Ensure we don't go before our data
+        start_date = max(start_date, min_date)
+        end_date = max(end_date, start_date)
+    else:
+        # For other timeframes, use max_date as end_date
+        end_date = max_date
+        
+        # Calculate start date based on timeframe
+        if timeframe == '1M':
+            start_date = end_date - timedelta(days=30)
+        elif timeframe == '3M':
+            start_date = end_date - timedelta(days=90)
+        elif timeframe == '6M':
+            start_date = end_date - timedelta(days=180)
+        elif timeframe == '1Y':
+            start_date = end_date - timedelta(days=365)
+        
+        # Ensure start date isn't before our data
+        start_date = max(start_date, min_date)
     
     return start_date, end_date
 
@@ -208,31 +220,38 @@ def create_sales_summary_with_comparison(data, dimension, date_range):
     previous_start = start_date - pd.Timedelta(days=current_period_length)
     previous_end = start_date - pd.Timedelta(days=1)
     
-    # Split data into current and previous periods
+    # Ensure data is properly filtered
     current_period_data = data[
-        (data['Date'] >= start_date) &
-        (data['Date'] <= end_date)
-    ]
+        (data['Date'].dt.date >= start_date.date()) &
+        (data['Date'].dt.date <= end_date.date())
+    ].copy()
+    
     previous_period_data = data[
-        (data['Date'] >= previous_start) &
-        (data['Date'] <= previous_end)
-    ]
+        (data['Date'].dt.date >= previous_start.date()) &
+        (data['Date'].dt.date <= previous_end.date())
+    ].copy()
     
-    # Create summaries for both periods
-    current_summary = current_period_data.groupby(dimension).agg({
-        'Sales Dollars': 'sum',
-        'Units Sold': 'sum'
-    }).reset_index()
+    # Create summaries for both periods with explicit type handling
+    def create_summary(period_data, dimension):
+        summary = period_data.groupby(dimension).agg({
+            'Sales Dollars': lambda x: x.astype(float).sum(),
+            'Units Sold': lambda x: x.astype(int).sum()
+        }).reset_index()
+        
+        summary['Average Price'] = (summary['Sales Dollars'] / 
+                                  summary['Units Sold'].replace(0, np.nan)).round(2)
+        
+        # Calculate percentages of total
+        total_sales = summary['Sales Dollars'].sum()
+        summary['Revenue %'] = (summary['Sales Dollars'] / total_sales * 100).round(1)
+        
+        total_units = summary['Units Sold'].sum()
+        summary['Units %'] = (summary['Units Sold'] / total_units * 100).round(1)
+        
+        return summary
     
-    previous_summary = previous_period_data.groupby(dimension).agg({
-        'Sales Dollars': 'sum',
-        'Units Sold': 'sum'
-    }).reset_index()
-    
-    # Calculate metrics for current period
-    current_summary['Average Price'] = current_summary['Sales Dollars'] / current_summary['Units Sold']
-    current_summary['Revenue %'] = (current_summary['Sales Dollars'] / current_summary['Sales Dollars'].sum() * 100).round(1)
-    current_summary['Units %'] = (current_summary['Units Sold'] / current_summary['Units Sold'].sum() * 100).round(1)
+    current_summary = create_summary(current_period_data, dimension)
+    previous_summary = create_summary(previous_period_data, dimension)
     
     # Merge with previous period data
     summary = current_summary.merge(
@@ -245,28 +264,21 @@ def create_sales_summary_with_comparison(data, dimension, date_range):
     # Calculate period-over-period changes
     summary['Revenue Change %'] = (
         (summary['Sales Dollars'] - summary['Sales Dollars_prev']) /
-        summary['Sales Dollars_prev'] * 100
+        summary['Sales Dollars_prev'].replace(0, np.nan) * 100
     ).round(1)
     
     summary['Units Change %'] = (
         (summary['Units Sold'] - summary['Units Sold_prev']) /
-        summary['Units Sold_prev'] * 100
+        summary['Units Sold_prev'].replace(0, np.nan) * 100
     ).round(1)
     
-    # Fill NaN values for new items
-    summary = summary.fillna({
-        'Sales Dollars_prev': 0,
-        'Units Sold_prev': 0,
-        'Revenue Change %': float('inf'),
-        'Units Change %': float('inf')
-    })
+    # Handle new items and infinite values
+    summary = summary.replace([np.inf, -np.inf], np.nan)
+    summary['Revenue Change %'] = summary['Revenue Change %'].fillna('New')
+    summary['Units Change %'] = summary['Units Change %'].fillna('New')
     
     # Sort by current period revenue
     summary = summary.sort_values('Sales Dollars', ascending=False)
-    
-    # Replace infinity values with "New"
-    summary['Revenue Change %'] = summary['Revenue Change %'].replace(float('inf'), 'New')
-    summary['Units Change %'] = summary['Units Change %'].replace(float('inf'), 'New')
     
     return summary
 
