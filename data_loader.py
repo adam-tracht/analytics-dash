@@ -236,3 +236,61 @@ def calculate_metrics(data):
     }
     
     return metrics
+
+@st.cache_data(ttl=3600)
+def load_returns_data(spreadsheet_id):
+    """
+    Load returns data from the returns sheet.
+    Returns tuple: (DataFrame or None, error message or None)
+    """
+    try:
+        credentials = get_google_credentials()
+        if not credentials:
+            return None, "Failed to load Google credentials"
+            
+        service = build('sheets', 'v4', credentials=credentials)
+        
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range='returns!A:J'  # Adjust range to match your returns sheet
+        ).execute()
+        
+        values = result.get('values', [])
+        if not values:
+            return None, "No returns data found"
+        
+        # Create DataFrame with column headers
+        df = pd.DataFrame(values[1:], columns=values[0])
+        
+        # Validate required columns
+        required_columns = ['Week', 'SKU', 'Total sales', 'Returns ($)', 
+                          'Quantity returned', 'Orders', 'Quantity ordered',
+                          'Product Title', 'Color', 'Size']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return None, f"Missing required columns in returns sheet: {', '.join(missing_columns)}"
+        
+        # Convert numeric columns
+        numeric_columns = ['Total sales', 'Returns ($)', 'Quantity returned', 
+                         'Orders', 'Quantity ordered']
+        for col in numeric_columns:
+            df[col] = pd.to_numeric(df[col].str.replace('$', '', regex=False)
+                                          .str.replace(',', '', regex=False)
+                                          .str.strip(), 
+                                  errors='coerce')
+            
+        # Convert Week to datetime
+        df['Week'] = pd.to_datetime(df['Week'], errors='coerce')
+        
+        # Calculate return rate metrics
+        df['Return Rate %'] = (df['Quantity returned'] / df['Quantity ordered'] * 100).round(2)
+        df['Return Value Rate %'] = (df['Returns ($)'] / df['Total sales'] * 100).round(2)
+        
+        return df, None
+        
+    except Exception as e:
+        error_message = str(e)
+        if "404" in error_message:
+            return None, "Returns sheet not found. Please ensure 'returns' sheet exists."
+        else:
+            return None, f"Error loading returns data: {error_message}"
