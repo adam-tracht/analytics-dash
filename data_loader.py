@@ -22,6 +22,46 @@ def get_google_credentials():
         return None
 
 @st.cache_data(ttl=3600)
+def load_context_data(spreadsheet_id, sheet_name='data_context'):
+    """
+    Load context information from a separate sheet in the spreadsheet.
+    Returns tuple: (DataFrame or None, error message or None)
+    """
+    try:
+        credentials = get_google_credentials()
+        if not credentials:
+            return None, "Failed to load Google credentials"
+            
+        service = build('sheets', 'v4', credentials=credentials)
+        
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range='data_context!A:C'  # Explicitly specify the range
+        ).execute()
+        
+        values = result.get('values', [])
+        if not values:
+            return None, "No context data found"
+        
+        # Create DataFrame with column headers
+        df = pd.DataFrame(values[1:], columns=values[0])
+        
+        # Validate required columns
+        required_columns = ['Category', 'Description', 'Notes']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return None, f"Missing required columns in context sheet: {', '.join(missing_columns)}"
+            
+        return df, None
+        
+    except Exception as e:
+        error_message = str(e)
+        if "404" in error_message:
+            return None, "Context sheet not found. Please ensure 'data_context' sheet exists."
+        else:
+            return None, f"Error loading context data: {error_message}"
+
+@st.cache_data(ttl=3600)
 def load_data_from_gsheet(spreadsheet_id, range_name):
     """
     Load and validate data from Google Sheets with proper error handling.
