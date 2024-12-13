@@ -571,16 +571,41 @@ def create_returns_analysis(returns_data, date_range=None):
             
             display_df = pd.DataFrame(display_cols)
             
-            # Format the display DataFrame with inverted heatmap for return rates
+            # Format numbers first
+            display_df = display_df.copy()
+            numeric_display_df = display_df.copy()
+            
+            # Create styler with basic formatting
             styled_df = display_df.style.format({
                 'Returns ($)': '${:,.2f}',
                 'Units Returned': '{:,.0f}',
                 'Return Rate (Units)': '{:.1f}%',
                 'Return Rate (Revenue)': '{:.1f}%'
-            }).background_gradient(
-                subset=['Return Rate (Units)', 'Return Rate (Revenue)'],
-                cmap='Reds_r'  # Using reversed Reds colormap
-            )
+            })
+            
+            # Define style function
+            def color_return_rates(val):
+                """Style return rates based on value."""
+                try:
+                    if isinstance(val, str):
+                        val = float(val.rstrip('%'))
+                    
+                    if pd.isna(val):
+                        return ''
+                    elif val >= -5:
+                        return ''  # Default background for low return rates
+                    elif val >= -10:
+                        return 'background-color: #ef5350'  # Medium red
+                    elif val >= -15:
+                        return 'background-color: #d32f2f'  # Darker red
+                    else:
+                        return 'background-color: #b71c1c'  # Darkest red
+                except:
+                    return ''
+            
+            # Apply styles to return rate columns
+            styled_df = styled_df.apply(lambda x: [color_return_rates(v) for v in x], 
+                                      subset=['Return Rate (Units)', 'Return Rate (Revenue)'])
             
             st.dataframe(styled_df, use_container_width=True)
             
