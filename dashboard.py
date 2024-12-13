@@ -4,20 +4,36 @@ import pandas as pd
 import plotly.graph_objects as go
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
-from data_loader import load_data_from_gsheet, filter_data
+from data_loader import load_data_from_gsheet, filter_data, load_context_data
 from visualizations import create_distribution_charts, create_pivot_analysis_with_comparison
 import numpy as np
-
 
 # Add constants at the top
 DEMO_SHEET_ID = "1Ar7YABu7FIUAAAcq-8YZ6LRDVLh8DVV_cKN0WCU12kY"
 DEMO_SHEET_RANGE = "sales_template"
 TEMPLATE_LINK = "https://docs.google.com/spreadsheets/d/1Ar7YABu7FIUAAAcq-8YZ6LRDVLh8DVV_cKN0WCU12kY/edit#gid=0"
 
+def display_context_section(context_data):
+    """Display the context information in an expandable section."""
+    with st.expander("📝 Data Context & Notes", expanded=False):
+        if context_data is None:
+            st.info("No context information available.")
+            return
+            
+        # Display each category of information
+        for _, row in context_data.iterrows():
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                st.markdown(f"**{row['Category']}**")
+            with col2:
+                st.markdown(row['Description'])
+                if pd.notna(row['Notes']):
+                    st.caption(row['Notes'])
+
 def get_date_range(timeframe, data):
-    """Get start and end dates based on selected timeframe."""
+    """Get start and end dates based on selected timeframe using complete periods."""
     # Get the actual data range
     min_date = data['Date'].min().date()
     max_date = data['Date'].max().date()
@@ -26,38 +42,61 @@ def get_date_range(timeframe, data):
     if timeframe == 'Custom':
         return None
     
-    # For weekly filter, find the most recent Monday in the data
+    # Get today's date
+    today = datetime.now().date()
+    
+    # Find the end of the last complete month (last day of previous month)
+    last_complete_month = (today.replace(day=1) - timedelta(days=1))
+    
     if timeframe == '1W':
-        # Get the most recent Monday from max_date
-        days_since_monday = max_date.weekday()  # 0 = Monday, 1 = Tuesday, etc.
-        end_date = max_date - timedelta(days=days_since_monday)  # Move back to most recent Monday
-        start_date = end_date - timedelta(days=6)  # Previous week's Tuesday
+        # Find the last complete week (Monday-Sunday)
+        # Go back to the most recent Sunday
+        days_since_sunday = today.weekday() + 1  # +1 because we want the previous Sunday
+        last_sunday = today - timedelta(days=days_since_sunday)
         
-        # Ensure we don't go before our data
-        start_date = max(start_date, min_date)
-        end_date = max(end_date, start_date)
+        # Set the date range for the complete week
+        end_date = last_sunday
+        start_date = end_date - timedelta(days=6)  # Go back to Monday
+        
+        # Return both dates regardless of data availability
+        return start_date, end_date
     else:
-        # For other timeframes, use max_date as end_date
-        end_date = max_date
+        # For all other periods, end at the last day of the previous month
+        end_date = last_complete_month
         
         # Calculate start date based on timeframe
         if timeframe == '1M':
-            start_date = end_date - timedelta(days=30)
+            # Start from first day of last complete month
+            start_date = end_date.replace(day=1)
         elif timeframe == '3M':
-            start_date = end_date - timedelta(days=90)
+            # Start from first day of 3 months before the last complete month
+            year = end_date.year
+            month = end_date.month - 2
+            if month <= 0:
+                year -= 1
+                month = 12 + month
+            start_date = date(year, month, 1)
         elif timeframe == '6M':
-            start_date = end_date - timedelta(days=180)
+            # Start from first day of 6 months before the last complete month
+            year = end_date.year
+            month = end_date.month - 5
+            if month <= 0:
+                year -= 1
+                month = 12 + month
+            start_date = date(year, month, 1)
         elif timeframe == '1Y':
-            start_date = end_date - timedelta(days=365)
-        
-        # Ensure start date isn't before our data
+            # Start from first day of the same month last year
+            start_date = date(end_date.year - 1, end_date.month, 1)
+    
+    # Ensure dates don't go beyond data boundaries for non-weekly periods
+    if timeframe != '1W':
         start_date = max(start_date, min_date)
+        end_date = min(end_date, max_date)
     
     return start_date, end_date
 
 def display_filters(data):
-    """Display consolidated filters in a single row."""
-        
+    """Display consolidated filters in a single row with clear date range display."""
     col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
     
     with col1:
@@ -80,25 +119,36 @@ def display_filters(data):
             options=['1W', '1M', '3M', '6M', '1Y', 'Custom'],
             index=1,  # Default to 1M
             format_func=lambda x: {
-                '1W': 'Last Week',
-                '1M': 'Last Month',
-                '3M': 'Last 3 Months',
-                '6M': 'Last 6 Months',
-                '1Y': 'Last Year',
+                '1W': 'Last Complete Week',
+                '1M': 'Last Complete Month',
+                '3M': 'Last 3 Complete Months',
+                '6M': 'Last 6 Complete Months',
+                '1Y': 'Last 12 Complete Months',
                 'Custom': 'Custom Range'
             }[x]
         )
     
     with col4:
+        st.write("Date Range:")
         if timeframe == 'Custom':
             date_range = st.date_input(
                 "Select Dates",
                 value=(data['Date'].min().date(), data['Date'].max().date()),
                 min_value=data['Date'].min().date(),
-                max_value=data['Date'].max().date()
+                max_value=data['Date'].max().date(),
+                label_visibility="collapsed"
             )
         else:
             date_range = get_date_range(timeframe, data)
+            if date_range:
+                # Add note for weekly data if the end date is beyond available data
+                if timeframe == '1W' and date_range[1] > data['Date'].max().date():
+                    st.write(f"{date_range[0].strftime('%Y-%m-%d')} to")
+                    st.write(f"{date_range[1].strftime('%Y-%m-%d')}")
+                    st.caption("⚠️ Data through end of week")
+                else:
+                    st.write(f"{date_range[0].strftime('%Y-%m-%d')} to")
+                    st.write(f"{date_range[1].strftime('%Y-%m-%d')}")
     
     return retailer_filter, product_filter, date_range
 
@@ -213,12 +263,18 @@ def create_sales_summary_with_comparison(data, dimension, date_range):
     start_date = pd.to_datetime(date_range[0])
     end_date = pd.to_datetime(date_range[1])
     
-    # Calculate the length of the current period in days
-    current_period_length = (end_date - start_date).days
+    # Check if this is a weekly comparison (dates are 7 days apart)
+    is_weekly = (end_date - start_date).days == 6
     
-    # Define the previous period date range
-    previous_start = start_date - pd.Timedelta(days=current_period_length)
-    previous_end = start_date - pd.Timedelta(days=1)
+    if is_weekly:
+        # For weekly comparisons, simply subtract 7 days from both dates
+        previous_start = start_date - pd.Timedelta(days=7)
+        previous_end = end_date - pd.Timedelta(days=7)
+    else:
+        # For other periods, use the period length method
+        current_period_length = (end_date - start_date).days
+        previous_start = start_date - pd.Timedelta(days=current_period_length)
+        previous_end = start_date - pd.Timedelta(days=1)
     
     # Ensure data is properly filtered
     current_period_data = data[
@@ -293,7 +349,6 @@ def display_sales_summary(summary, dimension_name):
         'vs Prev Period': summary['Revenue Change %'],
         'Current Units': summary['Units Sold'],
         'vs Prev Period ': summary['Units Change %'],  # Extra space to make unique
-        'Avg Price': summary['Average Price'],
         'Revenue %': summary['Revenue %']
     }
     
@@ -305,7 +360,6 @@ def display_sales_summary(summary, dimension_name):
         'Current Units': '{:,}',
         'vs Prev Period': lambda x: f"{x}%" if isinstance(x, (int, float)) else x,
         'vs Prev Period ': lambda x: f"{x}%" if isinstance(x, (int, float)) else x,
-        'Avg Price': '${:.2f}',
         'Revenue %': '{:.1f}%'
     }).apply(lambda x: [
         'color: red' if isinstance(v, (int, float)) and v < 0 else
@@ -415,16 +469,27 @@ def main():
     # Load data based on whether user provided their own sheet ID or using demo data
     if not sheet_id:
         data, error = load_data_from_gsheet(DEMO_SHEET_ID, DEMO_SHEET_RANGE)
+        context_data, context_error = load_context_data(DEMO_SHEET_ID)
         if not st.session_state.sidebar_collapsed:
             st.sidebar.info("👆 Currently using demo data. Enter your Sheet ID above to use your own data.")
     else:
         data, error = load_data_from_gsheet(sheet_id, sheet_range)
+        context_data, context_error = load_context_data(sheet_id)
     
     if error:
         st.error(error)
         return
     if data is None:
         return
+
+    # Display context section
+    try:
+        if context_data is not None:
+            display_context_section(context_data)
+        elif context_error:
+            st.info("Context data not available. Please ensure you have a 'data_context' sheet with columns: Category, Description, Notes")
+    except Exception as e:
+        st.warning(f"Error displaying context section: {str(e)}")
 
     # Display filters
     retailer_filter, product_filter, date_range = display_filters(data)
