@@ -185,11 +185,6 @@ def create_pivot_analysis_with_comparison(data, date_range):
     """Create an interactive pivot table analysis section with period comparisons."""
     st.subheader("Interactive Pivot Table")
     
-    # Calculate previous period dates
-    period_length = (date_range[1] - date_range[0]).days
-    previous_start = date_range[0] - timedelta(days=period_length)
-    previous_end = date_range[0] - timedelta(days=1)
-    
     # Create filter columns
     filter_col1, filter_col2 = st.columns(2)
     
@@ -216,16 +211,33 @@ def create_pivot_analysis_with_comparison(data, date_range):
     if "All" not in product_filter:
         filtered_data = filtered_data[filtered_data['Product Title'].isin(product_filter)]
     
-    # Get current period data
+    # Convert date_range to datetime if they're date objects
+    start_date = pd.to_datetime(date_range[0])
+    end_date = pd.to_datetime(date_range[1])
+    
+    # Check if this is a weekly comparison
+    is_weekly = (end_date - start_date).days == 6
+    
+    if is_weekly:
+        # For weekly comparisons, subtract 7 days from both dates
+        previous_start = start_date - pd.Timedelta(days=7)
+        previous_end = end_date - pd.Timedelta(days=7)
+    else:
+        # For other periods, use the period length method
+        period_length = (end_date - start_date).days
+        previous_start = start_date - pd.Timedelta(days=period_length)
+        previous_end = start_date - pd.Timedelta(days=1)
+    
+    # Get current period data - convert timestamps to dates for comparison
     current_data = filtered_data[
-        (filtered_data['Date'].dt.date >= date_range[0]) &
-        (filtered_data['Date'].dt.date <= date_range[1])
+        (filtered_data['Date'].dt.date >= start_date.date()) &
+        (filtered_data['Date'].dt.date <= end_date.date())
     ].copy()
     
-    # Get previous period data
+    # Get previous period data - convert timestamps to dates for comparison
     previous_data = filtered_data[
-        (filtered_data['Date'].dt.date >= previous_start) &
-        (filtered_data['Date'].dt.date <= previous_end)
+        (filtered_data['Date'].dt.date >= previous_start.date()) &
+        (filtered_data['Date'].dt.date <= previous_end.date())
     ].copy()
     
     # Clean dimension values for Color and Size
@@ -352,8 +364,8 @@ def create_pivot_analysis_with_comparison(data, date_range):
             st.error(f"Error creating pivot table: {str(e)}")
             st.write("Debug information:")
             st.write({
-                'current_data_shape': current_data.shape,
-                'previous_data_shape': previous_data.shape,
+                'current_data_shape': current_data.shape if 'current_data' in locals() else None,
+                'previous_data_shape': previous_data.shape if 'previous_data' in locals() else None,
                 'selected_rows': selected_rows,
                 'metric': metric
             })
