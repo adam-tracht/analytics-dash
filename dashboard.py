@@ -6,8 +6,8 @@ import json
 import os
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from data_loader import load_data_from_gsheet, filter_data, load_context_data
-from visualizations import create_distribution_charts, create_pivot_analysis_with_comparison
+from data_loader import load_data_from_gsheet, filter_data, load_context_data, load_returns_data
+from visualizations import create_distribution_charts, create_pivot_analysis_with_comparison, create_returns_analysis
 import numpy as np
 
 # Add constants at the top
@@ -403,12 +403,12 @@ def save_config(sheet_id, sheet_range):
 def main():
     st.set_page_config(page_title="Sales Analytics Dashboard", layout="wide")
     
+    # Add tabs for Sales and Returns analysis
+    tabs = st.tabs(["📈 Sales Analysis", "↩️ Returns Analysis"])
+    
     # Initialize session state for sidebar collapse
     if 'sidebar_collapsed' not in st.session_state:
         st.session_state.sidebar_collapsed = False
-    
-    # Main content
-    st.title("Sales Analytics Dashboard")
     
     # Initialize session state
     if 'sheet_id' not in st.session_state:
@@ -419,7 +419,6 @@ def main():
     # Only show detailed sidebar content if not collapsed
     if not st.session_state.sidebar_collapsed:
         with st.sidebar:
-            
             # Add template download instructions
             st.markdown(f"""
             ### 🚀 Getting Started
@@ -460,7 +459,6 @@ def main():
                     st.session_state.sheet_id = sheet_id
                     st.session_state.sheet_range = sheet_range
                     st.success("Saved!")
-                
     else:
         # When sidebar is collapsed, we still need the sheet_id value
         sheet_id = st.session_state.sheet_id
@@ -470,11 +468,13 @@ def main():
     if not sheet_id:
         data, error = load_data_from_gsheet(DEMO_SHEET_ID, DEMO_SHEET_RANGE)
         context_data, context_error = load_context_data(DEMO_SHEET_ID)
+        returns_data, returns_error = load_returns_data(DEMO_SHEET_ID)
         if not st.session_state.sidebar_collapsed:
             st.sidebar.info("👆 Currently using demo data. Enter your Sheet ID above to use your own data.")
     else:
         data, error = load_data_from_gsheet(sheet_id, sheet_range)
         context_data, context_error = load_context_data(sheet_id)
+        returns_data, returns_error = load_returns_data(sheet_id)
     
     if error:
         st.error(error)
@@ -482,69 +482,79 @@ def main():
     if data is None:
         return
 
-    # Display context section
-    try:
-        if context_data is not None:
-            display_context_section(context_data)
-        elif context_error:
-            st.info("Context data not available. Please ensure you have a 'data_context' sheet with columns: Category, Description, Notes")
-    except Exception as e:
-        st.warning(f"Error displaying context section: {str(e)}")
+    with tabs[0]:  # Sales Analysis Tab
+        # Display context section
+        try:
+            if context_data is not None:
+                display_context_section(context_data)
+            elif context_error:
+                st.info("Context data not available. Please ensure you have a 'data_context' sheet with columns: Category, Description, Notes")
+        except Exception as e:
+            st.warning(f"Error displaying context section: {str(e)}")
 
-    # Display filters
-    retailer_filter, product_filter, date_range = display_filters(data)
-    
-    # Apply retailer and product filters, but NOT date filter yet
-    filtered_data = filter_data(data, retailer_filter, product_filter)
-    
-    # Create fully filtered data for components that need it
-    fully_filtered_data = filter_data(filtered_data, retailer_filter, product_filter, date_range)
-    
-    # Display sales overview with fully filtered data
-    st.plotly_chart(plot_sales_overview(data, fully_filtered_data, retailer_filter, product_filter), use_container_width=True)
-    
-    # Display sales summaries with comparisons using filtered_data (not fully_filtered_data)
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        retailer_summary = create_sales_summary_with_comparison(filtered_data, 'Retailer', date_range)
-        display_sales_summary(retailer_summary, 'Retailer')
-    
-    with col2:
-        product_summary = create_sales_summary_with_comparison(filtered_data, 'Product Title', date_range)
-        display_sales_summary(product_summary, 'Product Title')
-    
-    # Combined Size and Color Analysis
-    st.subheader("Color and Size Analysis")
-    
-    # Single product filter for both analyses
-    product_filter = st.selectbox(
-        "Select Product",
-        options=["All"] + sorted(filtered_data['Product Title'].unique().tolist()),
-        key="dimension_filter"
-    )
-    
-    # Create tabs for Size and Color analysis
-    dimension_tabs = st.tabs(["Size Analysis", "Color Analysis"])
-    
-    with dimension_tabs[0]:  # Size Analysis
-        size_line_fig, size_pie_fig = create_distribution_charts(fully_filtered_data, 'Size', product_filter)
+        # Display filters
+        retailer_filter, product_filter, date_range = display_filters(data)
+        
+        # Apply retailer and product filters, but NOT date filter yet
+        filtered_data = filter_data(data, retailer_filter, product_filter)
+        
+        # Create fully filtered data for components that need it
+        fully_filtered_data = filter_data(filtered_data, retailer_filter, product_filter, date_range)
+        
+        # Display sales overview with fully filtered data
+        st.plotly_chart(plot_sales_overview(data, fully_filtered_data, retailer_filter, product_filter), use_container_width=True)
+        
+        # Display sales summaries with comparisons using filtered_data
         col1, col2 = st.columns(2)
+        
         with col1:
-            st.plotly_chart(size_line_fig, use_container_width=True)
+            retailer_summary = create_sales_summary_with_comparison(filtered_data, 'Retailer', date_range)
+            display_sales_summary(retailer_summary, 'Retailer')
+        
         with col2:
-            st.plotly_chart(size_pie_fig, use_container_width=True)
-    
-    with dimension_tabs[1]:  # Color Analysis
-        color_line_fig, color_pie_fig = create_distribution_charts(fully_filtered_data, 'Color', product_filter)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(color_line_fig, use_container_width=True)
-        with col2:
-            st.plotly_chart(color_pie_fig, use_container_width=True)
+            product_summary = create_sales_summary_with_comparison(filtered_data, 'Product Title', date_range)
+            display_sales_summary(product_summary, 'Product Title')
+        
+        # Combined Size and Color Analysis
+        st.subheader("Color and Size Analysis")
+        
+        # Single product filter for both analyses
+        product_filter = st.selectbox(
+            "Select Product",
+            options=["All"] + sorted(filtered_data['Product Title'].unique().tolist()),
+            key="dimension_filter"
+        )
+        
+        # Create tabs for Size and Color analysis
+        dimension_tabs = st.tabs(["Size Analysis", "Color Analysis"])
+        
+        with dimension_tabs[0]:  # Size Analysis
+            size_line_fig, size_pie_fig = create_distribution_charts(fully_filtered_data, 'Size', product_filter)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(size_line_fig, use_container_width=True)
+            with col2:
+                st.plotly_chart(size_pie_fig, use_container_width=True)
+        
+        with dimension_tabs[1]:  # Color Analysis
+            color_line_fig, color_pie_fig = create_distribution_charts(fully_filtered_data, 'Color', product_filter)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(color_line_fig, use_container_width=True)
+            with col2:
+                st.plotly_chart(color_pie_fig, use_container_width=True)
 
-    # Add enhanced pivot analysis section with comparisons
-    create_pivot_analysis_with_comparison(filtered_data, date_range)
+        # Add enhanced pivot analysis section with comparisons
+        create_pivot_analysis_with_comparison(filtered_data, date_range)
+        
+    with tabs[1]:  # Returns Analysis Tab
+        if returns_error:
+            st.error(f"Error loading returns data: {returns_error}")
+        elif returns_data is None:
+            st.warning("No returns data available. Please ensure you have a 'returns' sheet in your spreadsheet.")
+        else:
+            # Create returns analysis
+            create_returns_analysis(returns_data, date_range)
 
 if __name__ == "__main__":
     main()
