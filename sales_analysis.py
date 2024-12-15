@@ -108,24 +108,27 @@ def display_sales_summary(summary, dimension_name):
         'Revenue %': '{:.1f}%'
     })
     
-    def color_changes(val):
+    def style_numeric_change(val):
         if isinstance(val, str):
             if val == 'New':
-                return 'color: blue'
+                return 'color: #2563eb'  # Blue
             val = val.replace('%', '')
             try:
                 num = float(val)
                 if num < 0:
-                    return 'color: red'
+                    return 'color: #dc2626'  # Red
                 elif num > 0:
-                    return 'color: green'
+                    return 'color: #16a34a'  # Green
             except ValueError:
                 pass
         return ''
     
-    styled_df = styled_df.applymap(color_changes, subset=['vs Prev Period', 'vs Prev Period '])
+    # Apply styling to comparison columns
+    styled_df = styled_df.map(style_numeric_change, subset=['vs Prev Period', 'vs Prev Period '])
+    
     st.dataframe(styled_df, use_container_width=True)
 
+# sales_analysis.py
 def create_pivot_analysis_with_comparison(data, date_range):
     """Create an interactive pivot table analysis section with period comparisons."""
     st.subheader("Interactive Pivot Table")
@@ -160,29 +163,16 @@ def create_pivot_analysis_with_comparison(data, date_range):
     start_date = pd.to_datetime(date_range[0])
     end_date = pd.to_datetime(date_range[1])
     
-    # Get the first day of the current month
-    current_month_start = start_date.replace(day=1)
+    # Check if this is a weekly comparison
+    is_weekly = (end_date - start_date).days == 6
     
-    # Check if this is a monthly view by checking if start_date is the first of the month
-    is_monthly = start_date.day == 1
-    
-    if is_monthly:
-        # Calculate the period length in months
-        months_diff = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month + 1
-        
-        # For monthly view(s), shift back by the appropriate number of months
-        previous_start = start_date - pd.DateOffset(months=months_diff)
-        previous_end = end_date - pd.DateOffset(months=months_diff)
+    if is_weekly:
+        previous_start = start_date - pd.Timedelta(days=7)
+        previous_end = end_date - pd.Timedelta(days=7)
     else:
-        # Check if this is a weekly comparison
-        is_weekly = (end_date - start_date).days == 6
-        if is_weekly:
-            previous_start = start_date - pd.Timedelta(days=7)
-            previous_end = end_date - pd.Timedelta(days=7)
-        else:
-            period_length = (end_date - start_date).days
-            previous_start = start_date - pd.Timedelta(days=period_length)
-            previous_end = start_date - pd.Timedelta(days=1)
+        period_length = (end_date - start_date).days
+        previous_start = start_date - pd.Timedelta(days=period_length)
+        previous_end = start_date - pd.Timedelta(days=1)
     
     # Get data for both periods
     current_data = filtered_data[
@@ -258,7 +248,7 @@ def create_pivot_analysis_with_comparison(data, date_range):
                  merged_pivot[f"{metric}_prev"] * 100).round(1)
             )
             
-            merged_pivot['% of Total'] = (merged_pivot[metric] / (current_total / 2) * 100).round(1)
+            merged_pivot['% of Total'] = (merged_pivot[metric] / current_total * 2 * 100).round(1)
             
             # Sort and format for display
             non_total = merged_pivot[merged_pivot[selected_rows[0]] != 'Total'].sort_values(
@@ -271,13 +261,27 @@ def create_pivot_analysis_with_comparison(data, date_range):
                 **{dim: merged_pivot[dim] for dim in selected_rows},
                 'Current Period': merged_pivot[metric],
                 'Previous Period': merged_pivot[f"{metric}_prev"],
-                'Change %': merged_pivot['Change %'],
+                'Change %': merged_pivot['Change %'].astype(str),  # Convert to string to handle 'New'
                 '% of Total': merged_pivot['% of Total']
             }
             
             display_df = pd.DataFrame(display_cols)
             
-            # Style the dataframe
+            # Define style function for Change %
+            def style_change_column(val):
+                if val == 'New':
+                    return 'color: blue'
+                try:
+                    num = float(val.replace('%', ''))
+                    if num < 0:
+                        return 'color: red'
+                    elif num > 0:
+                        return 'color: green'
+                    return ''
+                except:
+                    return ''
+            
+            # Apply styling with corrected formatting
             number_format = '${:,.2f}' if metric == 'Sales Dollars' else '{:,.0f}'
             styled_df = (display_df.style
                 .format({
@@ -286,10 +290,7 @@ def create_pivot_analysis_with_comparison(data, date_range):
                     'Change %': lambda x: f"{x}%" if x != 'New' else x,
                     '% of Total': '{:.1f}%'
                 })
-                .applymap(lambda x: 'color: red' if isinstance(x, (int, float)) and x < 0 else
-                         'color: green' if isinstance(x, (int, float)) and x > 0 else
-                         'color: blue' if x == 'New' else '',
-                         subset=['Change %'])
+                .applymap(style_change_column, subset=['Change %'])
             )
             
             st.dataframe(styled_df, use_container_width=True)
