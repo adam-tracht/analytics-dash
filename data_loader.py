@@ -294,3 +294,48 @@ def load_returns_data(spreadsheet_id):
             return None, "Returns sheet not found. Please ensure 'returns' sheet exists."
         else:
             return None, f"Error loading returns data: {error_message}"
+        
+def load_monthly_data(spreadsheet_id, range_name='monthly_sales'):
+    """Load monthly sales data from the monthly_sales sheet."""
+    try:
+        credentials = get_google_credentials()
+        if not credentials:
+            return None, "Failed to load Google credentials"
+            
+        service = build('sheets', 'v4', credentials=credentials)
+        
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f'{range_name}!A:H'
+        ).execute()
+        
+        values = result.get('values', [])
+        if not values:
+            return None, "No monthly data found"
+        
+        # Create DataFrame with proper column headers
+        df = pd.DataFrame(values[1:], columns=values[0])
+        
+        # Apply the same data cleaning as weekly data
+        # Clean Sales Dollars
+        df['Sales Dollars'] = (df['Sales Dollars']
+                             .str.replace('$', '', regex=False)
+                             .str.replace(',', '', regex=False)
+                             .str.strip())
+        df['Sales Dollars'] = pd.to_numeric(df['Sales Dollars'], errors='coerce').fillna(0)
+        
+        # Clean Units Sold
+        df['Units Sold'] = pd.to_numeric(df['Units Sold'], errors='coerce').fillna(0).astype(int)
+        
+        # Convert Date column
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df = df.dropna(subset=['Date'])
+        
+        return df, None
+        
+    except Exception as e:
+        error_message = str(e)
+        if "404" in error_message:
+            return None, "Monthly sales sheet not found. Please ensure 'monthly_sales' sheet exists."
+        else:
+            return None, f"Error loading monthly data: {error_message}"
