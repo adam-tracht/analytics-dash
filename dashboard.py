@@ -10,15 +10,17 @@ from data_loader import (
     load_returns_data,
     load_monthly_data
 )
-from dashboard_components import (
+from display_components import (
     display_context_section,
     display_filters,
-    plot_sales_overview,
+    plot_sales_overview
+)
+from sales_analysis import (
     create_sales_summary_with_comparison,
     display_sales_summary,
-    create_distribution_charts,
     create_pivot_analysis_with_comparison
 )
+from sales_visualizations import create_distribution_charts
 from returns_visualizations import create_returns_analysis
 
 # Constants
