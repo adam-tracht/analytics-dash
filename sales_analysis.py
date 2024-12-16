@@ -258,7 +258,7 @@ def create_pivot_analysis_with_comparison(data, date_range, view_type='Weekly'):
                  merged_pivot[f"{metric}_prev"] * 100).round(1)
             )
             
-            merged_pivot['% of Total'] = (merged_pivot[metric] / current_total * 100).round(1)
+            merged_pivot['% of Total'] = (merged_pivot[metric] / current_total * 100 * 2).round(1)
             
             # Sort and format for display
             non_total = merged_pivot[merged_pivot[selected_rows[0]] != 'Total'].sort_values(
