@@ -3,6 +3,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+from datetime import date, datetime
 from sales_visualizations import clean_dimension_values
 
 def create_returns_analysis(returns_data, date_range=None):
@@ -29,25 +30,31 @@ def create_returns_analysis(returns_data, date_range=None):
     st.subheader("Select Date Range")
     col1, col2 = st.columns(2)
     
+    # Set default dates
+    default_start = returns_data['Week'].min().date()
+    default_end = returns_data['Week'].max().date()
+    
+    if date_range is not None:
+        try:
+            default_start = date_range[0] if isinstance(date_range[0], date) else date_range[0].date()
+            default_end = date_range[1] if isinstance(date_range[1], date) else date_range[1].date()
+        except (AttributeError, IndexError):
+            pass  # Keep the original defaults if date_range is invalid
+    
     with col1:
         start_date = st.date_input(
             "Start Date",
-            value=returns_data['Week'].min().date() if date_range is None else date_range[0],
+            value=default_start,
             min_value=returns_data['Week'].min().date(),
             max_value=returns_data['Week'].max().date()
         )
     
     with col2:
-        # For end date, if the date_range extends beyond available data,
-        # use the date_range value but limit validation to available data
-        display_end_date = date_range[1] if date_range else returns_data['Week'].max().date()
-        actual_max_date = max(returns_data['Week'].max().date(), display_end_date)
-        
         end_date = st.date_input(
             "End Date",
-            value=display_end_date,
+            value=default_end,
             min_value=returns_data['Week'].min().date(),
-            max_value=actual_max_date
+            max_value=returns_data['Week'].max().date()
         )
     
     # Apply date filter
