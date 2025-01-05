@@ -126,7 +126,7 @@ def display_sales_summary(summary, dimension_name):
     # Apply styling to comparison columns
     styled_df = styled_df.map(style_numeric_change, subset=['vs Prev Period', 'vs Prev Period '])
     
-    st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # sales_analysis.py
 def create_pivot_analysis_with_comparison(data, date_range, view_type='Weekly'):
@@ -292,7 +292,7 @@ def create_pivot_analysis_with_comparison(data, date_range, view_type='Weekly'):
                          subset=['Change %'])
             )
             
-            st.dataframe(styled_df, use_container_width=True)
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
             
             # Add period information
             st.caption(f"""Current Period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}
