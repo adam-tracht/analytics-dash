@@ -85,11 +85,7 @@ def render_sidebar():
             value=st.session_state.sheet_id,
             placeholder="Enter your Sheet ID or leave blank for demo data"
         )
-        sheet_range = st.text_input(
-            "Sheet Range", 
-            value=st.session_state.sheet_range,
-            help="Enter sheet name or include range (e.g. 'sales_template' or 'sales_template!A1:H')"
-        )
+        sheet_range ="sales_template"
         
         # Save/Clear configuration buttons
         col1, col2 = st.columns(2)
