@@ -1,10 +1,12 @@
 # returns_visualizations.py
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from datetime import date, datetime, timedelta
 from sales_visualizations import clean_dimension_values
+from date_filters import create_date_filter, filter_data_by_dates
 
 def create_returns_analysis(returns_data, date_range=None):
     """Create returns analysis section with visualizations and metrics."""
@@ -26,43 +28,14 @@ def create_returns_analysis(returns_data, date_range=None):
     if "All" not in global_product_filter:
         returns_data = returns_data[returns_data['Product Title'].isin(global_product_filter)]
 
-    # Date filter
-    st.subheader("Select Date Range")
-    col1, col2 = st.columns(2)
+    # Use the consistent date filter component
+    start_date, end_date = create_date_filter(
+        returns_data.rename(columns={'Week': 'Date'}),
+        view_type='Weekly',
+        key_prefix='returns'
+    )
     
-    # Set default dates based on data range
-    data_start = returns_data['Week'].min().date()
-    data_end = returns_data['Week'].max().date()
-    
-    # If date_range is provided and valid, use it while ensuring it's within data bounds
-    if date_range is not None:
-        try:
-            default_start = min(date_range[0], data_end) if isinstance(date_range[0], date) else min(date_range[0].date(), data_end)
-            default_end = min(date_range[1], data_end) if isinstance(date_range[1], date) else min(date_range[1].date(), data_end)
-        except (AttributeError, IndexError):
-            default_start = data_start
-            default_end = data_end
-    else:
-        default_start = data_start
-        default_end = data_end
-
-    with col1:
-        start_date = st.date_input(
-            "Start Date",
-            value=default_start,
-            min_value=data_start,
-            max_value=data_end
-        )
-    
-    with col2:
-        end_date = st.date_input(
-            "End Date",
-            value=default_end,
-            min_value=data_start,
-            max_value=data_end
-        )
-    
-    # Apply date filter
+    # Filter data using the selected date range
     filtered_data = returns_data[
         (returns_data['Week'].dt.date >= start_date) &
         (returns_data['Week'].dt.date <= end_date)
