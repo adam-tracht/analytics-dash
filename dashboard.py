@@ -37,8 +37,7 @@ from inventory_visualizations import (
     clean_inventory_data
 )
 from web_metrics_visualizations import (
-    display_web_metrics_overview,
-    create_web_metrics_trend
+    display_web_metrics_dashboard
 )
 
 # Constants - Demo spreadsheet details
@@ -293,31 +292,7 @@ def main():
         elif web_metrics_data is None:
             st.warning("No web metrics data available. Please ensure you have a 'web_metrics' sheet.")
         else:
-            # Display context information if available
-            if context_data is not None:
-                display_context_section(context_data)
-
-            # Allow date range selection
-            st.subheader("📅 Select Date Range")
-            min_date = web_metrics_data['Week'].min().date()
-            max_date = web_metrics_data['Week'].max().date()
-            
-            date_range = st.date_input(
-                "Date Range",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date
-            )
-
-            # Display metrics overview
-            st.subheader("📊 Web Metrics Overview")
-            display_web_metrics_overview(web_metrics_data, date_range)
-
-            # Display trend chart
-            st.subheader("📈 Web Metrics Trends")
-            trend_fig = create_web_metrics_trend(web_metrics_data, date_range)
-            if trend_fig:
-                st.plotly_chart(trend_fig, use_container_width=True)
+            display_web_metrics_dashboard(web_metrics_data, context_data)
 
 if __name__ == "__main__":
     main()
