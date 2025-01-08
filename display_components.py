@@ -2,88 +2,8 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-import numpy as np
 from datetime import date, timedelta
-
-def get_date_range(timeframe, data, view_type='Weekly'):
-    """Get start and end dates based on selected timeframe."""
-    min_date = data['Date'].min().date()
-    max_date = data['Date'].max().date()
-    
-    if timeframe == 'Custom':
-        return None
-        
-    last_date = max_date
-    
-    if timeframe == '1W' and view_type == 'Weekly':
-        # If last_date is a Monday, it represents that full week
-        start_date = last_date
-        end_date = last_date + timedelta(days=6)  # End date is the following Sunday
-        return start_date, end_date
-    
-    # Find the last complete month
-    current_month = last_date.month
-    current_year = last_date.year
-    
-    if view_type == 'Monthly':
-        if timeframe == '1M':
-            # Last complete month
-            start_date = date(current_year, current_month, 1)
-            if current_month == 12:
-                end_date = date(current_year, 12, 31)
-            else:
-                end_date = date(current_year, current_month + 1, 1) - timedelta(days=1)
-        elif timeframe == '3M':
-            # Last 3 complete months
-            if current_month <= 3:
-                # Handle year boundary
-                months_back = current_month + 9
-                start_date = date(current_year - 1, months_back, 1)
-            else:
-                start_date = date(current_year, current_month - 2, 1)
-            if current_month == 12:
-                end_date = date(current_year, 12, 31)
-            else:
-                end_date = date(current_year, current_month + 1, 1) - timedelta(days=1)
-        elif timeframe == '6M':
-            # Last 6 complete months
-            if current_month <= 6:
-                # Handle year boundary
-                months_back = current_month + 6
-                start_date = date(current_year - 1, months_back, 1)
-            else:
-                start_date = date(current_year, current_month - 5, 1)
-            if current_month == 12:
-                end_date = date(current_year, 12, 31)
-            else:
-                end_date = date(current_year, current_month + 1, 1) - timedelta(days=1)
-        elif timeframe == '1Y':
-            # Last 12 complete months
-            start_date = date(current_year - 1, current_month, 1)
-            if current_month == 12:
-                end_date = date(current_year, 12, 31)
-            else:
-                end_date = date(current_year, current_month + 1, 1) - timedelta(days=1)
-    else:
-        # Non-monthly timeframes
-        if timeframe == '1M':
-            start_date = last_date - timedelta(days=29)
-            end_date = last_date
-        elif timeframe == '3M':
-            start_date = last_date - timedelta(days=89)
-            end_date = last_date
-        elif timeframe == '6M':
-            start_date = last_date - timedelta(days=179)
-            end_date = last_date
-        elif timeframe == '1Y':
-            start_date = last_date.replace(year=last_date.year - 1)
-            end_date = last_date
-
-    # Ensure dates don't go beyond data bounds
-    start_date = max(start_date, min_date)
-    end_date = min(end_date, max_date)
-    
-    return start_date, end_date
+from date_filters import create_date_filter, filter_data_by_dates
 
 def display_context_section(context_data):
     """Display the context information in an expandable section."""
@@ -119,7 +39,14 @@ def display_filters(data, monthly_data=None):
         view_type = 'Weekly'
         current_data = data
 
-    col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+        # Use the new date filter component
+    start_date, end_date = create_date_filter(
+        current_data, 
+        view_type=view_type,
+        key_prefix='main'
+    )
+    
+    col1, col2 = st.columns([2, 2])
     
     with col1:
         retailer_filter = st.multiselect(
@@ -135,44 +62,7 @@ def display_filters(data, monthly_data=None):
             default="All"
         )
     
-    with col3:
-        timeframe_options = ['1W', '1M', '3M', '6M', '1Y', 'Custom'] if view_type == 'Weekly' else ['1M', '3M', '6M', '1Y', 'Custom']
-        timeframe = st.selectbox(
-            "📅 Time Range",
-            options=timeframe_options,
-            index=1 if view_type == 'Monthly' else 0,
-            format_func=lambda x: {
-                '1W': 'Last Complete Week',
-                '1M': 'Last Complete Month',
-                '3M': 'Last 3 Complete Months',
-                '6M': 'Last 6 Complete Months',
-                '1Y': 'Last 12 Complete Months',
-                'Custom': 'Custom Range'
-            }[x]
-        )
-    
-    with col4:
-        st.write("Date Range:")
-        if timeframe == 'Custom':
-            date_range = st.date_input(
-                "Select Dates",
-                value=(current_data['Date'].min().date(), current_data['Date'].max().date()),
-                min_value=current_data['Date'].min().date(),
-                max_value=current_data['Date'].max().date(),
-                label_visibility="collapsed"
-            )
-        else:
-            date_range = get_date_range(timeframe, current_data, view_type)
-            if date_range:
-                if timeframe == '1W' and date_range[1] > current_data['Date'].max().date():
-                    st.write(f"{date_range[0].strftime('%Y-%m-%d')} to")
-                    st.write(f"{date_range[1].strftime('%Y-%m-%d')}")
-                    st.caption("⚠️ Data through end of week")
-                else:
-                    st.write(f"{date_range[0].strftime('%Y-%m-%d')} to")
-                    st.write(f"{date_range[1].strftime('%Y-%m-%d')}")
-    
-    return retailer_filter, product_filter, date_range, view_type if monthly_data is not None else 'Weekly'
+    return retailer_filter, product_filter, (start_date, end_date), view_type
 
 def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
     """Create a compact sales overview chart showing both filtered and total data."""
