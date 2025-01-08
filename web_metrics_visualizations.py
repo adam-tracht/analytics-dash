@@ -4,6 +4,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
+from date_filters import create_date_filter, filter_data_by_dates
 
 def display_web_metrics_overview(data, date_range=None):
     """Display key web metrics for the selected date range."""
@@ -153,3 +154,46 @@ def create_web_metrics_trend(data, date_range=None):
     )
 
     return fig
+
+def display_web_metrics_dashboard(web_metrics_data, context_data=None):
+    """
+    Main function to display the web metrics dashboard with the consistent date filter.
+    
+    Args:
+        web_metrics_data (pd.DataFrame): DataFrame containing web metrics
+        context_data (pd.DataFrame, optional): DataFrame containing context information
+    """
+    if web_metrics_data is None:
+        st.warning("No web metrics data available")
+        return
+
+    # Display context information if available
+    if context_data is not None:
+        with st.expander("📝 Data Context & Notes", expanded=False):
+            for _, row in context_data.iterrows():
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.markdown(f"**{row['Category']}**")
+                with col2:
+                    st.markdown(row['Description'])
+                    if pd.notna(row['Notes']):
+                        st.caption(row['Notes'])
+
+    # Use the consistent date filter component
+    # Note: We need to rename 'Week' to 'Date' temporarily for the date filter component
+    data_for_filter = web_metrics_data.rename(columns={'Week': 'Date'})
+    start_date, end_date = create_date_filter(
+        data_for_filter,
+        view_type='Weekly',
+        key_prefix='web_metrics'
+    )
+
+    # Display metrics overview
+    st.subheader("📊 Web Metrics Overview")
+    display_web_metrics_overview(web_metrics_data, (start_date, end_date))
+
+    # Display trend chart
+    st.subheader("📈 Web Metrics Trends")
+    trend_fig = create_web_metrics_trend(web_metrics_data, (start_date, end_date))
+    if trend_fig:
+        st.plotly_chart(trend_fig, use_container_width=True)
