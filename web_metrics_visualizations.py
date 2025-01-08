@@ -67,26 +67,26 @@ def create_web_metrics_trend(data, date_range=None):
     # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Add total Sessions trace (dimmed)
+    # Add total Sessions trace (using a distinct dark gray)
     fig.add_trace(
         go.Scatter(
             x=data['Week'],
             y=data['Sessions'],
             name="Total Sessions",
-            line=dict(color='rgba(200,200,200,0.5)', width=1),
+            line=dict(color='#2F2F2F', width=1),
             hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
                          "<b>Total Sessions:</b> %{y:,.0f}<extra></extra>"
         ),
         secondary_y=False
     )
 
-    # Add total CVR trace (dimmed)
+    # Add total CVR trace (using a distinct light gray)
     fig.add_trace(
         go.Scatter(
             x=data['Week'],
             y=data['Conversion Rate'],
             name="Total CVR",
-            line=dict(color='rgba(200,200,200,0.5)', width=1),
+            line=dict(color='#A0A0A0', width=1),
             hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
                          "<b>Total CVR:</b> %{y:.2f}%<extra></extra>"
         ),
