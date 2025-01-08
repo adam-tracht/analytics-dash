@@ -25,37 +25,38 @@ def create_returns_analysis(returns_data, date_range=None):
     )
 
     # Apply global product filter
+    filtered_data = returns_data.copy()
     if "All" not in global_product_filter:
-        returns_data = returns_data[returns_data['Product Title'].isin(global_product_filter)]
+        filtered_data = filtered_data[filtered_data['Product Title'].isin(global_product_filter)]
 
     # Use the consistent date filter component
     start_date, end_date = create_date_filter(
-        returns_data.rename(columns={'Week': 'Date'}),
+        filtered_data.rename(columns={'Week': 'Date'}),
         view_type='Weekly',
         key_prefix='returns'
     )
     
     # Filter data using the selected date range
-    filtered_data = returns_data[
-        (returns_data['Week'].dt.date >= start_date) &
-        (returns_data['Week'].dt.date <= end_date)
+    fully_filtered_data = filtered_data[
+        (filtered_data['Week'].dt.date >= start_date) &
+        (filtered_data['Week'].dt.date <= end_date)
     ]
 
-    if filtered_data.empty:
+    if fully_filtered_data.empty:
         st.warning("No data available for the selected filters")
         return
     
     # Overall metrics
     st.subheader("Returns Overview")
-    display_returns_metrics(filtered_data)
+    display_returns_metrics(fully_filtered_data)
     
     # Create returns trend chart
     st.subheader("Returns Trend Analysis")
-    display_returns_trend(filtered_data)
+    display_returns_trend(returns_data, filtered_data, fully_filtered_data)
     
     # Create pivot table analysis
     st.subheader("Detailed Returns Analysis")
-    create_returns_pivot(filtered_data)
+    create_returns_pivot(fully_filtered_data)
 
 def display_returns_metrics(returns_data):
     """Display overview metrics for returns analysis."""
@@ -79,8 +80,8 @@ def display_returns_metrics(returns_data):
                                returns_data['Total sales'].sum() * 100)
         st.metric("Return Rate (Revenue)", f"{avg_return_value_rate:.1f}%")
 
-def display_returns_trend(returns_data):
-    """Display the returns trend analysis chart."""
+def display_returns_trend(total_data, filtered_data, fully_filtered_data):
+    """Display the returns trend analysis chart showing both total and filtered data."""
     metric_type = st.radio(
         "Select Metric",
         ["Revenue", "Units"],
@@ -88,54 +89,83 @@ def display_returns_trend(returns_data):
         key="returns_trend_metric"
     )
     
-    weekly_returns = returns_data.groupby('Week').agg({
-        'Returns ($)': 'sum',
-        'Total sales': 'sum',
-        'Quantity returned': 'sum',
-        'Quantity ordered': 'sum'
-    }).reset_index()
+    # Calculate weekly metrics for each dataset
+    def calculate_weekly_metrics(data):
+        return data.groupby('Week').agg({
+            'Returns ($)': 'sum',
+            'Total sales': 'sum',
+            'Quantity returned': 'sum',
+            'Quantity ordered': 'sum'
+        }).reset_index()
     
-    # Calculate rates
-    weekly_returns['Return Rate (Revenue)'] = (weekly_returns['Returns ($)'] / 
-                                             weekly_returns['Total sales'] * 100)
-    weekly_returns['Return Rate (Units)'] = (weekly_returns['Quantity returned'] / 
-                                           weekly_returns['Quantity ordered'] * 100)
+    total_weekly = calculate_weekly_metrics(total_data)
+    filtered_weekly = calculate_weekly_metrics(filtered_data)
+    fully_filtered_weekly = calculate_weekly_metrics(fully_filtered_data)
     
+    # Calculate rates for each dataset
+    for df in [total_weekly, filtered_weekly, fully_filtered_weekly]:
+        df['Return Rate (Revenue)'] = (df['Returns ($)'] / df['Total sales'] * 100)
+        df['Return Rate (Units)'] = (df['Quantity returned'] / df['Quantity ordered'] * 100)
+    
+    # Create figure
     fig = go.Figure()
     
-    if metric_type == "Revenue":
+    # Determine which metrics to use based on selection
+    y_field = 'Return Rate (Revenue)' if metric_type == "Revenue" else 'Return Rate (Units)'
+    y_title = f"Return Rate ({metric_type} %)"
+    
+    # Add total data trace (dimmed)
+    fig.add_trace(go.Scatter(
+        x=total_weekly['Week'],
+        y=total_weekly[y_field],
+        name="Total Returns",
+        line=dict(color='rgba(200,200,200,0.5)', width=1),
+        hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
+                     f"<b>Total Return Rate:</b> %{{y:.1f}}%<extra></extra>"
+    ))
+
+    # Add product-filtered trace if different from total
+    if len(filtered_weekly) != len(total_weekly):
         fig.add_trace(go.Scatter(
-            x=weekly_returns['Week'],
-            y=weekly_returns['Return Rate (Revenue)'],
-            name='Return Rate (Revenue)',
-            mode='lines+markers',
-            line=dict(color='#FF6B6B'),
+            x=filtered_weekly['Week'],
+            y=filtered_weekly[y_field],
+            name="Product Filtered",
+            line=dict(color='rgba(75,144,176,0.5)', width=1),
             hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
-                         "<b>Return Rate:</b> %{y:.1f}%<extra></extra>"
+                         f"<b>Filtered Return Rate:</b> %{{y:.1f}}%<extra></extra>"
         ))
-        y_title = "Return Rate (Revenue %)"
-    else:
-        fig.add_trace(go.Scatter(
-            x=weekly_returns['Week'],
-            y=weekly_returns['Return Rate (Units)'],
-            name='Return Rate (Units)',
-            mode='lines+markers',
-            line=dict(color='#4ECDC4'),
-            hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
-                         "<b>Return Rate:</b> %{y:.1f}%<extra></extra>"
-        ))
-        y_title = "Return Rate (Units %)"
+
+    # Add date-filtered trace
+    fig.add_trace(go.Scatter(
+        x=fully_filtered_weekly['Week'],
+        y=fully_filtered_weekly[y_field],
+        name="Date Range",
+        line=dict(color='#FF6B6B', width=2),
+        hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
+                     f"<b>Selected Return Rate:</b> %{{y:.1f}}%<extra></extra>"
+    ))
     
     fig.update_layout(
-        xaxis=dict(title='Week'),
+        title='Returns Rate Trend Analysis',
+        xaxis=dict(title='Week', showgrid=True, gridcolor='rgba(211,211,211,0.3)'),
         yaxis=dict(
             title=y_title,
             tickformat='.1f',
-            ticksuffix='%'
+            ticksuffix='%',
+            showgrid=True,
+            gridcolor='rgba(211,211,211,0.3)'
         ),
         hovermode='x unified',
         template='plotly_white',
-        height=400
+        height=400,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
     st.plotly_chart(fig, use_container_width=True)
