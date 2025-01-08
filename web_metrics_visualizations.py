@@ -49,14 +49,16 @@ def display_web_metrics_overview(data, date_range=None):
         st.metric("Bounce Rate", f"{overall_bounce:.2f}%")
 
 def create_web_metrics_trend(data, date_range=None):
-    """Create a dual-axis line chart showing Sessions and Conversion Rate over time."""
+    """Create a dual-axis line chart showing both total and filtered data for Sessions and CVR."""
     if date_range:
         filtered_data = data[
             (data['Week'].dt.date >= date_range[0]) &
             (data['Week'].dt.date <= date_range[1])
         ]
+        show_filtered = True
     else:
         filtered_data = data
+        show_filtered = False
 
     if filtered_data.empty:
         return None
@@ -64,31 +66,58 @@ def create_web_metrics_trend(data, date_range=None):
     # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Add Sessions trace
+    # Add total Sessions trace (dimmed)
     fig.add_trace(
         go.Scatter(
-            x=filtered_data['Week'],
-            y=filtered_data['Sessions'],
-            name="Sessions",
-            line=dict(color="#4B90B0", width=2),
+            x=data['Week'],
+            y=data['Sessions'],
+            name="Total Sessions",
+            line=dict(color='rgba(200,200,200,0.5)', width=1),
             hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
-                         "<b>Sessions:</b> %{y:,.0f}<extra></extra>"
+                         "<b>Total Sessions:</b> %{y:,.0f}<extra></extra>"
         ),
         secondary_y=False
     )
 
-    # Add Conversion Rate trace
+    # Add total CVR trace (dimmed)
     fig.add_trace(
         go.Scatter(
-            x=filtered_data['Week'],
-            y=filtered_data['Conversion Rate'],
-            name="Conversion Rate",
-            line=dict(color="#FF6B6B", width=2),
+            x=data['Week'],
+            y=data['Conversion Rate'],
+            name="Total CVR",
+            line=dict(color='rgba(200,200,200,0.5)', width=1),
             hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
-                         "<b>CVR:</b> %{y:.2f}%<extra></extra>"
+                         "<b>Total CVR:</b> %{y:.2f}%<extra></extra>"
         ),
         secondary_y=True
     )
+
+    if show_filtered:
+        # Add filtered Sessions trace
+        fig.add_trace(
+            go.Scatter(
+                x=filtered_data['Week'],
+                y=filtered_data['Sessions'],
+                name="Filtered Sessions",
+                line=dict(color="#4B90B0", width=2),
+                hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
+                             "<b>Filtered Sessions:</b> %{y:,.0f}<extra></extra>"
+            ),
+            secondary_y=False
+        )
+
+        # Add filtered CVR trace
+        fig.add_trace(
+            go.Scatter(
+                x=filtered_data['Week'],
+                y=filtered_data['Conversion Rate'],
+                name="Filtered CVR",
+                line=dict(color="#FF6B6B", width=2),
+                hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
+                             "<b>Filtered CVR:</b> %{y:.2f}%<extra></extra>"
+            ),
+            secondary_y=True
+        )
 
     # Update layout
     fig.update_layout(
