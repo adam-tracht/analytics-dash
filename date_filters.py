@@ -5,14 +5,85 @@ from datetime import datetime, date, timedelta
 import pandas as pd
 import numpy as np
 
-def get_month_end(year, month, max_date):
-    """Calculate the end of the month, ensuring it doesn't exceed max_date."""
+def extend_data_with_future_record(data, view_type='Weekly'):
+    """
+    Extend the dataset by adding future records with zeros to allow proper date range selection.
+    For weekly view: Adds one day after the last date
+    For monthly view: Adds records through the end of the current month
+    """
+    if data.empty:
+        return data
+        
+    # Get the most recent date in the data
+    max_date = data['Date'].max()
+    
+    # Create a template row by taking the most recent row
+    template_row = data.iloc[-1].copy()
+    
+    # Initialize list to hold new rows
+    new_rows = []
+    
+    if view_type == 'Monthly':
+        # Calculate the end of the current month
+        month_end = get_month_end(max_date.year, max_date.month)
+        
+        # Add a row for each remaining day in the month
+        current_date = max_date + pd.Timedelta(days=1)
+        while current_date.date() <= month_end:
+            new_row = template_row.copy()
+            new_row['Date'] = current_date
+            new_rows.append(new_row)
+            current_date += pd.Timedelta(days=1)
+    else:
+        # For weekly view, just add one day
+        next_date = max_date + pd.Timedelta(days=1)
+        new_row = template_row.copy()
+        new_row['Date'] = next_date
+        new_rows.append(new_row)
+    
+    if new_rows:
+        # Create DataFrame from new rows
+        new_data = pd.DataFrame(new_rows)
+        
+        # Set numeric columns to zero
+        numeric_columns = ['Sales Dollars', 'Units Sold']
+        for col in numeric_columns:
+            if col in new_data.columns:
+                new_data[col] = 0
+        
+        # Append the new rows to the original data
+        extended_data = pd.concat([data, new_data], ignore_index=True)
+        return extended_data
+    
+    return data
+
+def get_next_weekday(start_date, weekday):
+    """
+    Get the next occurrence of specified weekday (0=Monday, 6=Sunday).
+    If start_date is already the specified weekday, return start_date.
+    """
+    days_ahead = weekday - start_date.weekday()
+    if days_ahead <= 0:  # Target day already happened this week
+        days_ahead += 7
+    return start_date + timedelta(days=days_ahead)
+
+def get_month_end(year, month):
+    """Calculate the last day of the given month."""
     if month == 12:
         next_month = date(year + 1, 1, 1)
     else:
         next_month = date(year, month + 1, 1)
-    month_end = next_month - timedelta(days=1)
-    return min(month_end, max_date)
+    return next_month - timedelta(days=1)
+
+def get_month_start(date_obj):
+    """Get the first day of the month for a given date."""
+    return date(date_obj.year, date_obj.month, 1)
+
+def get_month_bounds(date_obj):
+    """Get the start and end dates for the month containing the given date."""
+    start = get_month_start(date_obj)
+    end = get_month_end(date_obj.year, date_obj.month)
+    return start, end
 
 def get_default_dates(valid_starts, valid_ends, min_date, max_date, view_type='Weekly'):
     """
@@ -22,16 +93,38 @@ def get_default_dates(valid_starts, valid_ends, min_date, max_date, view_type='W
     """
     if not valid_starts or not valid_ends:
         return min_date, max_date
+    
+    if view_type == 'Monthly':
+        # For monthly view, get the most recent complete month
+        latest_date = max_date
+        start_date, end_date = get_month_bounds(latest_date)
         
-    # Always use the most recent valid dates for both weekly and monthly views
-    return valid_starts[-1], valid_ends[-1]
+        # If we're in the middle of a month, use the previous month
+        if latest_date.day < latest_date.replace(day=28).day:  # Not at month end
+            previous_month = latest_date.replace(day=1) - timedelta(days=1)
+            start_date, end_date = get_month_bounds(previous_month)
+        
+        return start_date, end_date
+    else:
+        # Weekly view logic remains the same
+        valid_start = valid_starts[-1]
+        valid_end = valid_ends[-1]
+        for end in valid_ends:
+            if end >= valid_start:
+                valid_end = end
+                break
+                
+        return valid_start, valid_end
 
 def get_valid_dates(data, view_type='Weekly', start_on_monday=True):
     """
     Get valid start and end dates based on actual data points.
     Returns two lists of datetime.date objects representing valid start and end dates.
     """
-    dates = sorted(data['Date'].dt.date.unique())
+    # Extend data with future records for proper date range selection
+    extended_data = extend_data_with_future_record(data, view_type=view_type)
+    
+    dates = sorted(extended_data['Date'].dt.date.unique())
     min_date = min(dates)
     max_date = max(dates)
     
@@ -47,33 +140,43 @@ def get_valid_dates(data, view_type='Weekly', start_on_monday=True):
                 valid_starts.append(current_date)
             current_date += timedelta(days=1)
         
-        # Find all valid week end dates
+        # For the end dates, we want to find all Sundays (or Saturdays)
+        # Including the next one after the last date if needed
+        target_end_weekday = 6 if start_on_monday else 5  # Sunday or Saturday
+        
         current_date = min_date
-        while current_date <= max_date:
-            weekday = current_date.weekday() if start_on_monday else current_date.isoweekday() % 7
-            if weekday == 6:  # Sunday (or Saturday if start_on_monday is False)
+        last_date = max_date
+        while current_date <= last_date:
+            weekday = current_date.weekday()
+            if weekday == target_end_weekday:
                 valid_ends.append(current_date)
             current_date += timedelta(days=1)
         
-        # If the last date in the data isn't a week end, add it as a valid end date
-        if not valid_ends or valid_ends[-1] < max_date:
-            valid_ends.append(max_date)
+        # If the last valid end isn't after the last date, add the next appropriate weekday
+        if not valid_ends or valid_ends[-1] < last_date:
+            next_end = get_next_weekday(last_date, target_end_weekday)
+            valid_ends.append(next_end)
                     
     else:  # Monthly view
         valid_starts = []
         valid_ends = []
         
-        # Group dates by year and month
-        date_months = set((d.year, d.month) for d in dates)
+        # Get the first and last months in the data
+        min_month_start = get_month_start(min_date)
+        max_month_start = get_month_start(max_date)
         
-        for year, month in sorted(date_months):
-            # First day of month
-            month_start = date(year, month, 1)
-            if month_start >= min_date:
-                valid_starts.append(month_start)
-                # Calculate month end, ensuring it doesn't exceed max_date
-                month_end = get_month_end(year, month, max_date)
-                valid_ends.append(month_end)
+        # Generate all month boundaries between min and max dates
+        current_date = min_month_start
+        while current_date <= max_month_start:
+            valid_starts.append(current_date)
+            month_end = get_month_end(current_date.year, current_date.month)
+            valid_ends.append(month_end)
+            
+            # Move to next month
+            if current_date.month == 12:
+                current_date = date(current_date.year + 1, 1, 1)
+            else:
+                current_date = date(current_date.year, current_date.month + 1, 1)
     
     # Ensure we have at least one valid start and end date
     if not valid_starts:
@@ -105,8 +208,11 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
             st.error(f"Could not convert Date column to datetime: {str(e)}")
             return None, None
     
-    min_date = data['Date'].min().date()
-    max_date = data['Date'].max().date()
+    # Extend data with future record for proper date range selection
+    extended_data = extend_data_with_future_record(data)
+    
+    min_date = extended_data['Date'].min().date()
+    max_date = extended_data['Date'].max().date()
     
     # Week start preference in sidebar
     with st.sidebar:
@@ -120,7 +226,7 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
         ) == "Monday"
     
     # Get valid dates based on view type and preferences
-    valid_starts, valid_ends = get_valid_dates(data, view_type, start_on_monday)
+    valid_starts, valid_ends = get_valid_dates(extended_data, view_type, start_on_monday)
     
     if not valid_starts or not valid_ends:
         st.error("No valid date ranges found in the data")
@@ -129,6 +235,10 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
     # Get default dates
     default_start, default_end = get_default_dates(valid_starts, valid_ends, min_date, max_date, view_type)
     
+    # Ensure default dates are within the valid range
+    default_start = max(min(default_start, max_date), min_date)
+    default_end = max(min(default_end, valid_ends[-1]), min_date)
+    
     # Create date filter UI
     st.write("### Select Date Range")
     
@@ -136,7 +246,7 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
     
     with col1:
         if view_type == 'Weekly':
-            start_label = "Start Week (Select a Monday)" if start_on_monday else "Start Week (Select a Monday)"
+            start_label = "Start Week (Select a Monday)" if start_on_monday else "Start Week (Select a Sunday)"
         else:
             start_label = "Start Month"
         
@@ -156,7 +266,7 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
     
     with col2:
         if view_type == 'Weekly':
-            end_label = "End Week (Select a Monday)" if start_on_monday else "End Week (Select a Saturday)"
+            end_label = "End Week (Select a Sunday)" if start_on_monday else "End Week (Select a Saturday)"
         else:
             end_label = "End Month"
         
@@ -165,11 +275,18 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
         if not valid_end_dates:
             valid_end_dates = [max_date]
         
+        # Ensure the default end date is within the valid range and is a proper week ending
+        if view_type == 'Weekly':
+            target_weekday = 6 if start_on_monday else 5  # Sunday or Saturday
+            default_end = get_next_weekday(start_date, target_weekday)
+        else:
+            default_end = max(min(default_end, max_date), start_date)
+        
         end_date = st.date_input(
             end_label,
-            value=valid_end_dates[0],
+            value=default_end,
             min_value=start_date,
-            max_value=max_date,
+            max_value=valid_ends[-1],
             key=f"{key_prefix}_end_date"
         )
         
@@ -178,6 +295,18 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
             nearest_end = min(valid_end_dates, key=lambda x: abs((x - end_date).days))
             st.warning(f"Selected date adjusted to nearest valid {view_type.lower()} end: {nearest_end}")
             end_date = nearest_end
+    
+    # Display selected range info
+    if view_type == 'Weekly':
+        week_text = "Monday" if start_on_monday else "Sunday"
+        st.caption(
+            f"Selected range: Week of {start_date.strftime('%Y-%m-%d')} ({week_text}) to "
+            f"Week ending {end_date.strftime('%Y-%m-%d')}"
+        )
+    else:
+        st.caption(
+            f"Selected range: {start_date.strftime('%B %Y')} to {end_date.strftime('%B %Y')}"
+        )
     
     return start_date, end_date
 
