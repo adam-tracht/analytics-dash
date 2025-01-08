@@ -27,7 +27,6 @@ def display_filters(data, monthly_data=None):
         toggle_col1, toggle_col2 = st.columns([2, 4])
         with toggle_col1:
             st.write("Data View:")
-        with toggle_col2:
             view_type = st.radio(
                 "Select View",
                 options=['Weekly', 'Monthly'],
