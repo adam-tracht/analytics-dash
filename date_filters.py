@@ -23,17 +23,8 @@ def get_default_dates(valid_starts, valid_ends, min_date, max_date, view_type='W
     if not valid_starts or not valid_ends:
         return min_date, max_date
         
-    if view_type == 'Weekly':
-        # Get the most recent start date that has a complete week of data
-        for start_date in reversed(valid_starts):
-            end_date = start_date + timedelta(days=6)
-            if end_date <= max_date:
-                return start_date, end_date
-        # If no complete week found, use the earliest week
-        return valid_starts[0], min(valid_ends[0], max_date)
-    else:
-        # For monthly view, use the most recent complete month
-        return valid_starts[-1], min(valid_ends[-1], max_date)
+    # Always use the most recent valid dates for both weekly and monthly views
+    return valid_starts[-1], valid_ends[-1]
 
 def get_valid_dates(data, view_type='Weekly', start_on_monday=True):
     """
@@ -48,14 +39,25 @@ def get_valid_dates(data, view_type='Weekly', start_on_monday=True):
         valid_starts = []
         valid_ends = []
         
-        for current_date in dates:
-            # Check if this is a valid week start
+        # Find all valid week start dates
+        current_date = min_date
+        while current_date <= max_date:
             weekday = current_date.weekday() if start_on_monday else current_date.isoweekday() % 7
             if weekday == 0:  # Monday (or Sunday if start_on_monday is False)
                 valid_starts.append(current_date)
-                # Calculate the end date (Sunday) for this week, not exceeding max_date
-                week_end = min(current_date + timedelta(days=6), max_date)
-                valid_ends.append(week_end)
+            current_date += timedelta(days=1)
+        
+        # Find all valid week end dates
+        current_date = min_date
+        while current_date <= max_date:
+            weekday = current_date.weekday() if start_on_monday else current_date.isoweekday() % 7
+            if weekday == 6:  # Sunday (or Saturday if start_on_monday is False)
+                valid_ends.append(current_date)
+            current_date += timedelta(days=1)
+        
+        # If the last date in the data isn't a week end, add it as a valid end date
+        if not valid_ends or valid_ends[-1] < max_date:
+            valid_ends.append(max_date)
                     
     else:  # Monthly view
         valid_starts = []
@@ -73,7 +75,17 @@ def get_valid_dates(data, view_type='Weekly', start_on_monday=True):
                 month_end = get_month_end(year, month, max_date)
                 valid_ends.append(month_end)
     
+    # Ensure we have at least one valid start and end date
+    if not valid_starts:
+        valid_starts = [min_date]
+    if not valid_ends:
+        valid_ends = [max_date]
+    
     return valid_starts, valid_ends
+
+def get_valid_end_dates(start_date, valid_ends):
+    """Get all valid end dates that occur after the start date."""
+    return [end_date for end_date in valid_ends if end_date >= start_date]
 
 def create_date_filter(data, view_type='Weekly', key_prefix=''):
     """
@@ -110,9 +122,8 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
     # Get valid dates based on view type and preferences
     valid_starts, valid_ends = get_valid_dates(data, view_type, start_on_monday)
     
-    if not valid_starts:
+    if not valid_starts or not valid_ends:
         st.error("No valid date ranges found in the data")
-        st.write("Please check the data format and ensure there are complete weeks/months")
         return min_date, max_date
     
     # Get default dates
@@ -125,7 +136,7 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
     
     with col1:
         if view_type == 'Weekly':
-            start_label = "Start Week (Select a Monday)" if start_on_monday else "Start Week (Select a Sunday)"
+            start_label = "Start Week (Select a Monday)" if start_on_monday else "Start Week (Select a Monday)"
         else:
             start_label = "Start Month"
         
@@ -145,42 +156,28 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
     
     with col2:
         if view_type == 'Weekly':
-            end_label = "End Week (Select a Sunday)" if start_on_monday else "End Week (Select a Saturday)"
+            end_label = "End Week (Select a Monday)" if start_on_monday else "End Week (Select a Saturday)"
         else:
             end_label = "End Month"
         
-        # Find the corresponding end date for the selected start date
-        start_idx = valid_starts.index(start_date)
-        valid_end_options = valid_ends[start_idx:]
-        
-        if not valid_end_options:
-            valid_end_options = [valid_ends[-1]]
+        # Get valid end dates based on selected start date
+        valid_end_dates = get_valid_end_dates(start_date, valid_ends)
+        if not valid_end_dates:
+            valid_end_dates = [max_date]
         
         end_date = st.date_input(
             end_label,
-            value=default_end,
+            value=valid_end_dates[0],
             min_value=start_date,
             max_value=max_date,
             key=f"{key_prefix}_end_date"
         )
         
-        # If selected date isn't valid, find the nearest valid date
-        if end_date not in valid_end_options:
-            nearest_end = min(valid_end_options, key=lambda x: abs((x - end_date).days))
+        # If selected date isn't a valid end date, find the nearest one
+        if end_date not in valid_end_dates:
+            nearest_end = min(valid_end_dates, key=lambda x: abs((x - end_date).days))
             st.warning(f"Selected date adjusted to nearest valid {view_type.lower()} end: {nearest_end}")
             end_date = nearest_end
-    
-    # Display selected range info
-    if view_type == 'Weekly':
-        week_text = "Monday" if start_on_monday else "Sunday"
-        st.caption(
-            f"Selected range: Week of {start_date.strftime('%Y-%m-%d')} ({week_text}) to "
-            f"Week ending {end_date.strftime('%Y-%m-%d')}"
-        )
-    else:
-        st.caption(
-            f"Selected range: {start_date.strftime('%B %Y')} to {end_date.strftime('%B %Y')}"
-        )
     
     return start_date, end_date
 
