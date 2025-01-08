@@ -159,14 +159,11 @@ def display_metrics(metrics):
         st.metric("Total Units", f"{metrics['total_units']:,}")
         
     with col3:
-        st.metric("Avg Order Value", f"${metrics['avg_order_value']:,.2f}")
-        
-    with col4:
         st.metric("Unique Products", str(metrics['unique_products']))
         
-    with col5:
+    with col4:
         st.metric("Active Retailers", str(metrics['unique_retailers']))
-
+        
 def create_pivot_analysis_with_comparison(data, date_range):
     """Create an interactive pivot table analysis section with period comparisons."""
     st.subheader("Interactive Pivot Table")
