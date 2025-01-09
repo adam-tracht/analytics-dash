@@ -64,7 +64,7 @@ def display_returns_metrics(returns_data):
     
     with col1:
         total_returns = returns_data['Returns ($)'].sum()
-        st.metric("Total Returns", f"${total_returns:,.2f}")
+        st.metric("Total Returns", f"${total_returns:,.0f}")
     
     with col2:
         total_units_returned = returns_data['Quantity returned'].sum()
@@ -248,7 +248,7 @@ def display_returns_pivot_table(pivot, selected_dimensions, sort_by):
     
     # Create styler with formatting
     styled_df = display_df.style.format({
-        'Returns ($)': '${:,.2f}',
+        'Returns ($)': '${:,.0f}',
         'Units Returned': '{:,.0f}',
         'Return Rate (Units)': '{:.1f}%',
         'Return Rate (Revenue)': '{:.1f}%'
