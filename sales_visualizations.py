@@ -43,7 +43,7 @@ def plot_sales_trend(data, moving_averages, show_daily, show_annotations):
         name='Daily Sales',
         line=dict(color='#4B90B0', width=1),
         marker=dict(size=4),
-        hovertemplate="<b>Date:</b> %{x|%Y-%m-%d}<br><b>Sales:</b> $%{y:,.2f}<br>"
+        hovertemplate="<b>Date:</b> %{x|%Y-%m-%d}<br><b>Sales:</b> $%{y:,.0f}<br>"
     ))
     
     # Add moving averages
@@ -56,7 +56,7 @@ def plot_sales_trend(data, moving_averages, show_daily, show_annotations):
             mode='lines',
             name=f'{period}-day MA',
             line=dict(color=colors[i % len(colors)], width=2, dash='dash'),
-            hovertemplate=f"<b>{period}-day MA:</b> $%{{y:,.2f}}<br>"
+            hovertemplate=f"<b>{period}-day MA:</b> $%{{y:,.0f}}<br>"
         ))
     
     fig.update_layout(
@@ -118,7 +118,7 @@ def create_distribution_charts(data, dimension, selected_product="All"):
             mode='lines',
             hovertemplate=f"<b>{dimension}:</b> {cat}<br>" +
                          "<b>Date:</b> %{x|%Y-%m-%d}<br>" +
-                         "<b>Sales:</b> $%{y:,.2f}<extra></extra>"
+                         "<b>Sales:</b> $%{y:,.0f}<extra></extra>"
         ))
     
     line_fig.update_layout(
@@ -137,7 +137,7 @@ def create_distribution_charts(data, dimension, selected_product="All"):
         values=dim_totals['Sales Dollars'],
         hole=.3,
         hovertemplate=f"<b>{dimension}:</b> %{{label}}<br>" +
-                     "<b>Sales:</b> $%{value:,.2f}<br>" +
+                     "<b>Sales:</b> $%{value:,.0f}<br>" +
                      "<b>Percentage:</b> %{percent:.1f}%<extra></extra>"
     )])
     
@@ -153,7 +153,7 @@ def display_metrics(metrics):
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        st.metric("Total Revenue", f"${metrics['total_sales']:,.2f}")
+        st.metric("Total Revenue", f"${metrics['total_sales']:,.0f}")
     
     with col2:
         st.metric("Total Units", f"{metrics['total_units']:,}")
@@ -305,7 +305,7 @@ def create_pivot_analysis_with_comparison(data, date_range):
             display_df = pd.DataFrame(display_cols)
             
             # Style the dataframe
-            number_format = '${:,.2f}' if metric == 'Sales Dollars' else '{:,.0f}'
+            number_format = '${:,.0f}' if metric == 'Sales Dollars' else '{:,.0f}'
             styled_df = (display_df.style
                 .format({
                     'Current Period': number_format,
