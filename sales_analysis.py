@@ -103,7 +103,7 @@ def display_sales_summary(summary, dimension_name):
     display_df = pd.DataFrame(display_cols)
     
     styled_df = display_df.style.format({
-        'Current Revenue': '${:,.2f}',
+        'Current Revenue': '${:,.0f}',
         'Current Units': '{:,}',
         'Revenue %': '{:.1f}%'
     })
@@ -278,7 +278,7 @@ def create_pivot_analysis_with_comparison(data, date_range, view_type='Weekly'):
             display_df = pd.DataFrame(display_cols)
             
             # Style the dataframe
-            number_format = '${:,.2f}' if metric == 'Sales Dollars' else '{:,.0f}'
+            number_format = '${:,.0f}' if metric == 'Sales Dollars' else '{:,.0f}'
             styled_df = (display_df.style
                 .format({
                     'Current Period': number_format,
