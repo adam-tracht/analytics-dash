@@ -23,6 +23,7 @@ from sales_analysis import (
     display_sales_summary,
     create_pivot_analysis_with_comparison
 )
+from summary_generator import display_performance_summary
 from sales_visualizations import (
     create_distribution_charts,
     display_metrics
@@ -216,9 +217,12 @@ def main():
         filtered_data = filter_data(current_data, retailer_filter, product_filter)
         fully_filtered_data = filter_data(filtered_data, retailer_filter, product_filter, date_range)
         
-        # Calculate and display metrics
+        # Display metrics and performance summary
         metrics = calculate_metrics(fully_filtered_data)
         display_metrics(metrics)
+
+        # Display performance summary
+        display_performance_summary(filtered_data, date_range, view_type)
         
         # Display visualizations and analysis
         st.plotly_chart(
