@@ -67,26 +67,26 @@ def create_web_metrics_trend(data, date_range=None):
     # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Add total Sessions trace (using a distinct dark gray)
+    # Add total Sessions trace (using a brighter color for better visibility)
     fig.add_trace(
         go.Scatter(
             x=data['Week'],
             y=data['Sessions'],
             name="Total Sessions",
-            line=dict(color='#2F2F2F', width=1),
+            line=dict(color='#93C5FD', width=2),  # Light blue for unfiltered data
             hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
                          "<b>Total Sessions:</b> %{y:,.0f}<extra></extra>"
         ),
         secondary_y=False
     )
 
-    # Add total CVR trace (using a distinct light gray)
+    # Add total CVR trace
     fig.add_trace(
         go.Scatter(
             x=data['Week'],
             y=data['Conversion Rate'],
             name="Total CVR",
-            line=dict(color='#A0A0A0', width=1),
+            line=dict(color='#FCA5A5', width=2),  # Light red for unfiltered data
             hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
                          "<b>Total CVR:</b> %{y:.2f}%<extra></extra>"
         ),
@@ -100,7 +100,7 @@ def create_web_metrics_trend(data, date_range=None):
                 x=filtered_data['Week'],
                 y=filtered_data['Sessions'],
                 name="Filtered Sessions",
-                line=dict(color="#4B90B0", width=2),
+                line=dict(color="#60A5FA", width=3),  # Bright blue for better visibility
                 hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
                              "<b>Filtered Sessions:</b> %{y:,.0f}<extra></extra>"
             ),
@@ -113,14 +113,14 @@ def create_web_metrics_trend(data, date_range=None):
                 x=filtered_data['Week'],
                 y=filtered_data['Conversion Rate'],
                 name="Filtered CVR",
-                line=dict(color="#FF6B6B", width=2),
+                line=dict(color="#F87171", width=3),  # Bright red for better visibility
                 hovertemplate="<b>Week:</b> %{x|%Y-%m-%d}<br>" +
                              "<b>Filtered CVR:</b> %{y:.2f}%<extra></extra>"
             ),
             secondary_y=True
         )
 
-    # Update layout
+    # Update layout with improved grid visibility
     fig.update_layout(
         title='Web Metrics Trends',
         template='plotly_white',
@@ -133,16 +133,24 @@ def create_web_metrics_trend(data, date_range=None):
             xanchor="right",
             x=1
         ),
-        margin=dict(t=100)
+        margin=dict(t=100),
+        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background
+        paper_bgcolor='rgba(0,0,0,0)'  # Transparent paper
     )
 
-    # Update axes
-    fig.update_xaxes(title_text="Week", showgrid=True, gridcolor='rgba(211,211,211,0.3)')
+    # Update axes with improved grid visibility
+    fig.update_xaxes(
+        title_text="Week",
+        showgrid=True,
+        gridcolor='rgba(128,128,128,0.2)',  # Brighter grid lines
+        gridwidth=1
+    )
     fig.update_yaxes(
         title_text="Sessions",
         secondary_y=False,
         showgrid=True,
-        gridcolor='rgba(211,211,211,0.3)',
+        gridcolor='rgba(128,128,128,0.2)',  # Brighter grid lines
+        gridwidth=1,
         tickformat=","
     )
     fig.update_yaxes(
