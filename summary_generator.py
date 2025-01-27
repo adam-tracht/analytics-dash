@@ -59,14 +59,14 @@ def analyze_performance(data: pd.DataFrame,
         return "No retailers met the minimum sales threshold of $1,000 in either period."
     
     # Identify new/lost retailers
-    new_retailers = perf_df[
+    new_retailers = list(perf_df[
         (perf_df['Current Sales'] > 0) & 
         (perf_df['Previous Sales'] == 0)
-    ].index
-    lost_retailers = perf_df[
+    ].index)
+    lost_retailers = list(perf_df[
         (perf_df['Current Sales'] == 0) & 
         (perf_df['Previous Sales'] > 0)
-    ].index
+    ].index)
     
     # Calculate percentage changes for existing retailers
     existing_retailers = perf_df[
@@ -91,42 +91,9 @@ def analyze_performance(data: pd.DataFrame,
     # Initialize summary lines
     lines = []
 
-    # Function to get product performance
-    def get_product_performance(retailer_data, retailer_prev_data):
-        # Get all unique products across both periods
-        current_products = retailer_data.groupby('Product Title')['Sales Dollars'].sum()
-        prev_products = retailer_prev_data.groupby('Product Title')['Sales Dollars'].sum()
-        all_products = pd.Index(set(current_products.index) | set(prev_products.index))
-        
-        # Create DataFrame with all products
-        changes = pd.DataFrame(index=all_products)
-        changes['Current Sales'] = current_products
-        changes['Previous Sales'] = prev_products
-        changes = changes.fillna(0)
-        
-        # Calculate absolute change
-        changes['Change'] = changes['Current Sales'] - changes['Previous Sales']
-        
-        # Identify new and lost products
-        changes['Status'] = 'Existing'
-        changes.loc[(changes['Current Sales'] > 0) & (changes['Previous Sales'] == 0), 'Status'] = 'New'
-        changes.loc[(changes['Current Sales'] == 0) & (changes['Previous Sales'] > 0), 'Status'] = 'Lost'
-        
-        # Calculate percentage change only for existing products
-        existing_mask = changes['Status'] == 'Existing'
-        changes['Change %'] = np.nan
-        changes.loc[existing_mask, 'Change %'] = (
-            (changes.loc[existing_mask, 'Current Sales'] - 
-             changes.loc[existing_mask, 'Previous Sales']) / 
-            changes.loc[existing_mask, 'Previous Sales'] * 100
-        ).round(1)
-        
-        return changes
-
     # Process increases
     increases = significant[significant['Change %'] > 0]
     increases_retailers = list(increases.index)
-    new_retailers = list(new_retailers)
 
     # Create a list to store retailers and their information for sorting
     increase_entries = []
@@ -140,18 +107,30 @@ def analyze_performance(data: pd.DataFrame,
         retailer_prev = previous_data[previous_data['Retailer'] == retailer]
         
         # Get product performance
-        product_changes = get_product_performance(retailer_current, retailer_prev)
+        current_products = retailer_current.groupby('Product Title')['Sales Dollars'].sum()
+        prev_products = retailer_prev.groupby('Product Title')['Sales Dollars'].sum()
         
-        # Get significant products (>=10% increase or new)
+        # Calculate product changes
+        product_changes = pd.DataFrame({
+            'Current Sales': current_products,
+            'Previous Sales': prev_products
+        }).fillna(0)
+        
+        product_changes['Change'] = product_changes['Current Sales'] - product_changes['Previous Sales']
+        product_changes['Change %'] = (
+            (product_changes['Current Sales'] - product_changes['Previous Sales']) /
+            product_changes['Previous Sales'].replace(0, np.nan) * 100
+        ).round(1)
+        
+        # Get top 3 products by change
         significant_products = product_changes[
-            ((product_changes['Status'] == 'Existing') & (product_changes['Change %'] >= 10)) |
-            (product_changes['Status'] == 'New')
+            product_changes['Change'] > 0
         ].nlargest(3, 'Change')
         
-        # Format product impacts
+        # Format product texts
         product_texts = []
         for name, row in significant_products.iterrows():
-            if row['Status'] == 'New':
+            if row['Previous Sales'] == 0:
                 change_text = "new"
             else:
                 change_text = f"up {row['Change %']:.1f}%"
@@ -174,19 +153,14 @@ def analyze_performance(data: pd.DataFrame,
     # Process new retailers
     for retailer in new_retailers:
         sales = perf_df.loc[retailer, 'Current Sales']
-        
         retailer_current = current_data[current_data['Retailer'] == retailer]
-        retailer_prev = previous_data[previous_data['Retailer'] == retailer]
         
-        # Get product performance
-        product_changes = get_product_performance(retailer_current, retailer_prev)
-        
-        # Show top 3 products by current sales
-        top_products = product_changes.nlargest(3, 'Current Sales')
+        # Show top 3 products
+        top_products = retailer_current.groupby('Product Title')['Sales Dollars'].sum().nlargest(3)
         
         product_texts = []
-        for name, row in top_products.iterrows():
-            product_texts.append(f"{name} (${row['Current Sales']:,.0f}, new)")
+        for name, sales_value in top_products.items():
+            product_texts.append(f"{name} (${sales_value:,.0f}, new)")
         
         # Format product section
         if product_texts:
@@ -208,7 +182,7 @@ def analyze_performance(data: pd.DataFrame,
         increase_entries.sort(reverse=True)  # Sort by sales in descending order
         lines.extend(line for _, line in increase_entries)
 
-    # Process decreases similarly to increases
+    # Process decreases
     decreases = significant[significant['Change %'] < 0]
     decrease_entries = []
 
@@ -220,19 +194,30 @@ def analyze_performance(data: pd.DataFrame,
         retailer_current = current_data[current_data['Retailer'] == retailer]
         retailer_prev = previous_data[previous_data['Retailer'] == retailer]
         
-        # Get product performance
-        product_changes = get_product_performance(retailer_current, retailer_prev)
+        # Calculate product changes
+        current_products = retailer_current.groupby('Product Title')['Sales Dollars'].sum()
+        prev_products = retailer_prev.groupby('Product Title')['Sales Dollars'].sum()
         
-        # Get significant products (<=-10% decrease or lost)
+        product_changes = pd.DataFrame({
+            'Current Sales': current_products,
+            'Previous Sales': prev_products
+        }).fillna(0)
+        
+        product_changes['Change'] = product_changes['Current Sales'] - product_changes['Previous Sales']
+        product_changes['Change %'] = (
+            (product_changes['Current Sales'] - product_changes['Previous Sales']) /
+            product_changes['Previous Sales'].replace(0, np.nan) * 100
+        ).round(1)
+        
+        # Get significant decreases
         significant_products = product_changes[
-            ((product_changes['Status'] == 'Existing') & (product_changes['Change %'] <= -10)) |
-            (product_changes['Status'] == 'Lost')
+            product_changes['Change'] < 0
         ].nsmallest(3, 'Change')
         
-        # Format product impacts
+        # Format product texts
         product_texts = []
         for name, row in significant_products.iterrows():
-            if row['Status'] == 'Lost':
+            if row['Current Sales'] == 0:
                 change_text = f"no sales (was ${row['Previous Sales']:,.0f})"
             else:
                 change_text = f"down {abs(row['Change %']):.1f}%"
@@ -255,19 +240,14 @@ def analyze_performance(data: pd.DataFrame,
     # Process lost retailers
     for retailer in lost_retailers:
         prev_sales = perf_df.loc[retailer, 'Previous Sales']
-        
-        retailer_current = current_data[current_data['Retailer'] == retailer]
         retailer_prev = previous_data[previous_data['Retailer'] == retailer]
         
-        # Get product performance
-        product_changes = get_product_performance(retailer_current, retailer_prev)
-        
-        # Show top 3 products by previous sales
-        top_products = product_changes.nlargest(3, 'Previous Sales')
+        # Show top 3 products from previous period
+        top_products = retailer_prev.groupby('Product Title')['Sales Dollars'].sum().nlargest(3)
         
         product_texts = []
-        for name, row in top_products.iterrows():
-            product_texts.append(f"{name} (${row['Previous Sales']:,.0f} previous period)")
+        for name, sales_value in top_products.items():
+            product_texts.append(f"{name} (${sales_value:,.0f} previous period)")
         
         # Format product section
         if product_texts:
@@ -289,7 +269,9 @@ def analyze_performance(data: pd.DataFrame,
         decrease_entries.sort(reverse=True)  # Sort by sales in descending order
         lines.extend(line for _, line in decrease_entries)
 
-    if increases.empty and new_retailers.size == 0 and decreases.empty and lost_retailers.size == 0:
+    # Check if there were any significant changes
+    if (len(increases_retailers) == 0 and len(new_retailers) == 0 and 
+        len(decreases.index) == 0 and len(lost_retailers) == 0):
         return "No retailers with ≥$1,000 in sales showed significant changes (≥10%) in revenue compared to the previous period."
 
     return ''.join(lines)
