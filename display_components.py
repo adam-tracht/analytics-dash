@@ -141,16 +141,20 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
         layout.update({
             'margin': dict(t=30, b=30, l=60, r=60),
             'yaxis': dict(
-                title='Total Sales',
-                titlefont=dict(color='rgba(128,128,128,0.8)'),
+                title=dict(
+                    text='Total Sales',
+                    font=dict(color='rgba(128,128,128,0.8)')
+                ),
                 tickfont=dict(color='rgba(128,128,128,0.8)'),
                 tickformat="$,.0f",
                 gridcolor='rgba(211,211,211,0.3)',
                 side='left'
             ),
             'yaxis2': dict(
-                title='Filtered Sales',
-                titlefont=dict(color='#4B90B0'),
+                title=dict(
+                    text='Filtered Sales',
+                    font=dict(color='#4B90B0')
+                ),
                 tickfont=dict(color='#4B90B0'),
                 tickformat="$,.0f",
                 gridcolor='rgba(211,211,211,0.3)',
