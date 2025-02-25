@@ -67,11 +67,28 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
     """Create a compact sales overview chart showing both filtered and total data."""
     fig = go.Figure()
     
+    # Ensure we're working with proper dataframes
+    if data is None or data.empty:
+        return go.Figure().update_layout(
+            title="No data available",
+            height=300
+        )
+        
+    if filtered_data is None or filtered_data.empty:
+        return go.Figure().update_layout(
+            title="No data available for selected filters",
+            height=300
+        )
+    
+    # Group by date
     total_sales = data.groupby('Date')['Sales Dollars'].sum().reset_index()
     filtered_sales = filtered_data.groupby('Date')['Sales Dollars'].sum().reset_index()
     
-    filters_applied = ("All" not in retailer_filter) or ("All" not in product_filter)
+    # Check if filters are applied
+    filters_applied = (isinstance(retailer_filter, list) and "All" not in retailer_filter) or \
+                     (isinstance(product_filter, list) and "All" not in product_filter)
     
+    # Add total sales trace
     fig.add_trace(go.Scatter(
         x=total_sales['Date'],
         y=total_sales['Sales Dollars'],
@@ -82,6 +99,7 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
         yaxis='y'
     ))
     
+    # Add filtered sales trace
     fig.add_trace(go.Scatter(
         x=filtered_sales['Date'],
         y=filtered_sales['Sales Dollars'],
@@ -92,6 +110,7 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
         yaxis='y2' if filters_applied else 'y'
     ))
     
+    # Base layout - always apply this
     layout = {
         'height': 300,
         'margin': dict(t=30, b=30, l=60, r=30),
@@ -117,6 +136,7 @@ def plot_sales_overview(data, filtered_data, retailer_filter, product_filter):
         'hovermode': 'x unified'
     }
     
+    # If filters are applied, add secondary y-axis
     if filters_applied:
         layout.update({
             'margin': dict(t=30, b=30, l=60, r=60),
