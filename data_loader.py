@@ -109,25 +109,22 @@ def load_data_from_gsheet(spreadsheet_id, range_name):
     if not spreadsheet_id:
         return None, "Please enter a Google Sheet ID"
         
-    # Add debug information
-    st.sidebar.markdown("### Debug Information")
-    st.sidebar.markdown(f"📝 Sheet ID: `{spreadsheet_id}`")
-    st.sidebar.markdown(f"📍 Range: `{range_name}`")
-    
+
     try:
         credentials = get_google_credentials()
         if not credentials:
             return None, "Failed to load Google credentials"
             
         if hasattr(credentials, 'service_account_email'):
-            st.sidebar.markdown(f"🔑 Service Account: `{credentials.service_account_email}`")
+            # Service account authentication successful
+            pass
         
         service = build('sheets', 'v4', credentials=credentials)
         
         try:
             metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-            st.sidebar.markdown("✅ Successfully accessed sheet metadata")
-            st.sidebar.markdown(f"📊 Sheet Title: `{metadata.get('properties', {}).get('title', 'Unknown')}`")
+            # Successfully accessed sheet metadata
+            pass
         except Exception as e:
             error_msg = str(e)
             if "404" in error_msg:
@@ -140,7 +137,7 @@ def load_data_from_gsheet(spreadsheet_id, range_name):
             elif "403" in error_msg:
                 return None, "Access denied. Please check sharing permissions"
             else:
-                return None, f"Error accessing sheet metadata: {error_msg}"
+                return None, "Error accessing sheet metadata"
 
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
@@ -210,20 +207,8 @@ def load_data_from_gsheet(spreadsheet_id, range_name):
         if df.empty:
             return None, "No valid data rows found after cleaning"
         
-        # Add Category statistics to sidebar
-        st.sidebar.markdown("### Category Statistics")
-        st.sidebar.markdown(f"📊 Total Categories: {df['Category'].nunique()}")
-        st.sidebar.markdown("Top Categories:")
+        # Calculate statistics (but don't display in sidebar)
         category_counts = df.groupby('Category')['Units Sold'].sum().sort_values(ascending=False).head(3)
-        for cat, count in category_counts.items():
-            st.sidebar.markdown(f"- {cat}: {int(count):,} units")
-        
-        # Add general data quality metrics to sidebar
-        st.sidebar.markdown("### Data Quality Metrics")
-        st.sidebar.markdown(f"📊 Total Rows: {len(df)}")
-        st.sidebar.markdown(f"📅 Date Range: {df['Date'].min().date()} to {df['Date'].max().date()}")
-        st.sidebar.markdown(f"💰 Total Revenue: ${df['Sales Dollars'].sum():,.2f}")
-        st.sidebar.markdown(f"📦 Total Units: {int(df['Units Sold'].sum()):,}")
         
         return df, None
         
@@ -369,14 +354,9 @@ def load_monthly_data(spreadsheet_id, range_name='monthly_sales'):
                 df['Category'] = df['Category'].replace(['', ' ', '0', '0.0'], 'Uncategorized')
                 df['Category'] = df['Category'].astype(str).str.strip()
             
-            # Add category statistics to sidebar for monthly data
+            # Calculate monthly category statistics (but don't display in sidebar)
             if 'Category' in df.columns:
-                st.sidebar.markdown("### Monthly Category Statistics")
-                st.sidebar.markdown(f"📊 Total Categories: {df['Category'].nunique()}")
-                st.sidebar.markdown("Top Categories (Monthly):")
                 category_counts = df.groupby('Category')['Units Sold'].sum().sort_values(ascending=False).head(3)
-                for cat, count in category_counts.items():
-                    st.sidebar.markdown(f"- {cat}: {int(count):,} units")
             
             return df, None
             
