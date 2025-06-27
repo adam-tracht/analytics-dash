@@ -216,14 +216,14 @@ def create_date_filter(data, view_type='Weekly', key_prefix=''):
     
     # Week start preference in sidebar
     with st.sidebar:
-    st.write("### Date Settings")
-    start_on_monday = st.radio(
-        "Week Starts On",
-        options=["Monday", "Sunday"],
-        index=0,
-        key=f"{key_prefix}_week_start",
+        st.write("### Date Settings")
+        start_on_monday = st.radio(
+            "Week Starts On",
+            options=["Monday", "Sunday"],
+            index=0,
+            key=f"{key_prefix}_week_start",
             format_func=lambda x: f"Weeks Start on {x}"
-    ) == "Monday"
+        ) == "Monday"
     
     # Get valid dates based on view type and preferences
     valid_starts, valid_ends = get_valid_dates(extended_data, view_type, start_on_monday)
